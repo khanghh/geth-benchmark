@@ -42,7 +42,7 @@ func mustCreateWallet(mnemonic string, numAcc uint) *hdwallet.Wallet {
 		log.Fatal("Could not create HD wallet.", err)
 	}
 	for i := 0; i < int(numAcc); i++ {
-		walletDerivePath := "m/44'/60'/0'/0/%d"
+		walletDerivePath := fmt.Sprintf("m/44'/60'/0'/0/%d", i)
 		derivationPath := hdwallet.MustParseDerivationPath(walletDerivePath)
 		_, err := wallet.Derive(derivationPath, true)
 		if err != nil {
@@ -74,14 +74,17 @@ func run(ctx *cli.Context) {
 	})
 
 	if benchmarkType == 1 {
-	} else if benchmarkType == 2 {
-		txBechmark := benchmark.NewTxBenchmark(rpcUrl)
+		txBechmark := benchmark.NewTxBenchmark(rpcUrl, wallet)
 		engine.SetBenchmark(txBechmark)
+	} else if benchmarkType == 2 {
 	} else {
 		log.Fatal("Unknown benchmark type.")
 	}
 	fmt.Println("Starting benchmark test...")
-	engine.Run(context.Background())
+	err = engine.Run(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func main() {

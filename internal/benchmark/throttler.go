@@ -6,12 +6,15 @@ import (
 )
 
 type LimitWaitGroup struct {
-	limit      uint
+	limit      int
 	occupiedCh chan struct{}
 	wg         sync.WaitGroup
 }
 
-func NewLimitWaitGroup(limit uint) *LimitWaitGroup {
+func NewLimitWaitGroup(limit int) *LimitWaitGroup {
+	if limit < 0 {
+		panic("wait group size must be greater than zero.")
+	}
 	return &LimitWaitGroup{
 		limit:      limit,
 		occupiedCh: make(chan struct{}, limit),
@@ -20,8 +23,7 @@ func NewLimitWaitGroup(limit uint) *LimitWaitGroup {
 }
 
 func (s *LimitWaitGroup) Add() {
-	s.occupiedCh <- struct{}{}
-	s.wg.Add(1)
+	s.AddWithContext(context.Background())
 }
 
 func (s *LimitWaitGroup) AddWithContext(ctx context.Context) error {
@@ -39,6 +41,9 @@ func (s *LimitWaitGroup) Done() {
 	s.wg.Done()
 }
 
-func (s *LimitWaitGroup) Wait() {
+func (s *LimitWaitGroup) Wait() <-chan struct{} {
 	s.wg.Wait()
+	retCh := make(chan struct{}, 1)
+	retCh <- struct{}{}
+	return retCh
 }
