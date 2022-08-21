@@ -81,10 +81,7 @@ func run(ctx *cli.Context) {
 		log.Fatal("Unknown benchmark type.")
 	}
 	fmt.Println("Starting benchmark test...")
-	err = engine.Run(context.Background())
-	if err != nil {
-		log.Fatal(err)
-	}
+	engine.Run(context.Background())
 }
 
 func main() {

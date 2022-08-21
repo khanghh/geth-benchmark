@@ -44,7 +44,7 @@ type BenchmarkOptions struct {
 }
 
 type BenchmarkTest interface {
-	Prepair() error
+	Prepair()
 	DoWork(workerIndex int) error
 	OnFinish(roundIndex int, result *BenchmarkResult)
 }
@@ -112,16 +112,13 @@ func (e *BenchmarkEngine) runRound(roundIdx int) *BenchmarkResult {
 	return e.generateResult(startTime)
 }
 
-func (e *BenchmarkEngine) Run(ctx context.Context) error {
-	if err := e.testToRun.Prepair(); err != nil {
-		return err
-	}
+func (e *BenchmarkEngine) Run(ctx context.Context) {
+	e.testToRun.Prepair()
 	for roundIdx := 0; roundIdx < e.NumRounds; roundIdx++ {
 		result := e.runRound(roundIdx)
 		e.results = append(e.results, result)
 		e.testToRun.OnFinish(roundIdx, result)
 	}
-	return nil
 }
 
 func NewBenchmarkEngine(opts BenchmarkOptions) *BenchmarkEngine {
