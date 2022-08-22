@@ -17,14 +17,6 @@ import (
 	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 )
 
-type txStatus int
-
-const (
-	txStatusPending   = 0
-	txStatusSucceeded = 1
-	txStatusFailed    = 1
-)
-
 const (
 	rpcTimeOut       = 10 * time.Second
 	walletDerivePath = "m/44'/60'/0'/0/%d"
@@ -54,8 +46,8 @@ func (b *TxBenchmark) transferERC20(sender accounts.Account, receiver accounts.A
 	}
 	opts.Nonce = big.NewInt(int64(b.takeNonce(sender)))
 	opts.Value = big.NewInt(0)
-	opts.GasTipCap = big.NewInt(100 * params.GWei)
-	opts.GasFeeCap = big.NewInt(101 * params.GWei)
+	opts.GasTipCap = big.NewInt(101 * params.GWei) // MaxPriorityFeePerGas
+	opts.GasFeeCap = big.NewInt(101 * params.GWei) // MaxFeePerGas
 	opts.GasLimit = 500000
 	amount := big.NewInt(0)
 	_, err = b.erc20Token.Transfer(opts, receiver.Address, amount)

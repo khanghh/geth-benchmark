@@ -38,7 +38,6 @@ func init() {
 }
 
 func mustCreateWallet(mnemonic string, numAcc uint) *hdwallet.Wallet {
-	fmt.Println("mnemonic", mnemonic)
 	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
 	if err != nil {
 		log.Fatal("Could not create HD wallet. ", err)
