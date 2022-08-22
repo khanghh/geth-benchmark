@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -31,9 +32,30 @@ type BenchmarkResult struct {
 	MaxLatency time.Duration
 	MinLatency time.Duration
 	AvgLatency time.Duration
-	WorkPerSec float64
+	ExecPerSec float64
 	StartTime  time.Time
-	FinishTime time.Time
+	TimeTaken  time.Duration
+	mtx        sync.Mutex
+}
+
+func (r *BenchmarkResult) collectResult(work *workerResult) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.TimeTaken += work.Elapsed
+	if work.Error != nil {
+		r.Failed += 1
+	} else {
+		r.Succeeded += 1
+	}
+	execCount := r.Succeeded + r.Failed
+	r.ExecPerSec = float64(execCount) / float64(time.Since(r.StartTime)/time.Second)
+	r.AvgLatency = time.Duration(uint64(r.TimeTaken) / execCount)
+	if work.Elapsed > r.MaxLatency {
+		r.MaxLatency = work.Elapsed
+	}
+	if work.Elapsed < r.MinLatency {
+		r.MinLatency = work.Elapsed
+	}
 }
 
 type BenchmarkOptions struct {
@@ -54,23 +76,10 @@ type BenchmarkEngine struct {
 	BenchmarkOptions
 	limiter   ratelimit.Limiter
 	ticker    time.Ticker
-	results   []*BenchmarkResult
 	records   map[int]*workerResult
 	testToRun BenchmarkTest
 	result    *BenchmarkResult
 	wg        *LimitWaitGroup
-	mtx       sync.Mutex
-}
-
-func (e *BenchmarkEngine) onWorkerFinished(result *workerResult) {
-	e.mtx.Lock()
-	defer e.mtx.Unlock()
-	e.records[result.WorkerIndex] = result
-	if result.Error != nil {
-		e.result.Failed += 1
-	} else {
-		e.result.Succeeded += 1
-	}
 }
 
 func (e *BenchmarkEngine) worker(wg *LimitWaitGroup, workerIndex int) {
@@ -85,15 +94,15 @@ func (e *BenchmarkEngine) worker(wg *LimitWaitGroup, workerIndex int) {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			fmt.Println(err)
+			fmt.Printf("Worker %d failed: %s\n", workerIndex, err)
 		}
-		e.onWorkerFinished(&workerResult{
+		e.result.collectResult(&workerResult{
 			WorkerIndex: workerIndex,
 			Elapsed:     time.Since(startTime),
 			Error:       err,
 		})
 	case <-time.After(e.Timeout):
-		e.onWorkerFinished(&workerResult{
+		e.result.collectResult(&workerResult{
 			WorkerIndex: workerIndex,
 			Elapsed:     time.Since(startTime),
 			Error:       errWorkerTimeout,
@@ -124,22 +133,27 @@ func (e *BenchmarkEngine) runRound(roundIdx int) *BenchmarkResult {
 	return e.generateResult(startTime)
 }
 
-func (e *BenchmarkEngine) printStats() {
+func (e *BenchmarkEngine) printStatus() {
 	for {
 		time.Sleep(1 * time.Second)
 		fmt.Println("Succeeded: ", e.result.Succeeded)
 		fmt.Println("Failed: ", e.result.Failed)
-		fmt.Println("Working: ", e.wg.Size())
+		fmt.Printf("MinLatency: %dms\n", e.result.MinLatency/time.Millisecond)
+		fmt.Printf("MaxLatency: %dms\n", e.result.MaxLatency/time.Millisecond)
+		fmt.Printf("ExecPerSec: %.2f\n", e.result.ExecPerSec)
+		fmt.Println()
 	}
 }
 
 func (e *BenchmarkEngine) Run(ctx context.Context) {
-	e.result = &BenchmarkResult{}
+	e.result = &BenchmarkResult{
+		StartTime:  time.Now(),
+		MinLatency: time.Duration(math.MaxInt64),
+	}
 	e.testToRun.Prepair()
-	go e.printStats()
+	go e.printStatus()
 	for roundIdx := 0; roundIdx < e.NumRounds; roundIdx++ {
 		result := e.runRound(roundIdx)
-		e.results = append(e.results, result)
 		e.testToRun.OnFinish(roundIdx, result)
 	}
 }
@@ -147,8 +161,8 @@ func (e *BenchmarkEngine) Run(ctx context.Context) {
 func NewBenchmarkEngine(opts BenchmarkOptions) *BenchmarkEngine {
 	return &BenchmarkEngine{
 		BenchmarkOptions: opts,
-		limiter:          ratelimit.New(opts.ExecuteRate),
 		records:          make(map[int]*workerResult),
+		limiter:          ratelimit.New(opts.ExecuteRate),
 		ticker:           *time.NewTicker(updateInterval),
 	}
 }
