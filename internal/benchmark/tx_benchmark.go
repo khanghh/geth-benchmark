@@ -17,6 +17,14 @@ import (
 	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 )
 
+type txStatus int
+
+const (
+	txStatusPending   = 0
+	txStatusSucceeded = 1
+	txStatusFailed    = 1
+)
+
 const (
 	rpcTimeOut       = 10 * time.Second
 	walletDerivePath = "m/44'/60'/0'/0/%d"
@@ -32,9 +40,28 @@ type TxBenchmark struct {
 	client     *ethclient.Client
 	erc20Token *erc20.ERC20
 	wallet     *hdwallet.Wallet
+	mtx        sync.Mutex
 }
 
-func (b *TxBenchmark) transferERC20(workerIndex int) error {
+func (b *TxBenchmark) transferERC20(sender accounts.Account, receiver accounts.Account, value *big.Int) error {
+	privateKey, err := b.wallet.PrivateKey(sender)
+	if err != nil {
+		return err
+	}
+	opts, err := bind.NewKeyedTransactorWithChainID(privateKey, b.chainId)
+	if err != nil {
+		return err
+	}
+	opts.Nonce = big.NewInt(int64(b.takeNonce(sender)))
+	opts.Value = big.NewInt(0)
+	opts.GasTipCap = big.NewInt(100 * params.GWei)
+	opts.GasFeeCap = big.NewInt(101 * params.GWei)
+	opts.GasLimit = 500000
+	amount := big.NewInt(0)
+	_, err = b.erc20Token.Transfer(opts, receiver.Address, amount)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -81,16 +108,25 @@ func (b *TxBenchmark) fetchAllNonces() error {
 	}
 }
 
+func (b *TxBenchmark) takeNonce(acc accounts.Account) uint64 {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+	nonce := b.accNonces[acc.Address]
+	b.accNonces[acc.Address] += 1
+	return nonce
+}
+
 func (b *TxBenchmark) deployERC20(acc accounts.Account) (common.Address, *erc20.ERC20, error) {
 	privateKey, _ := b.wallet.PrivateKey(acc)
 	opts, err := bind.NewKeyedTransactorWithChainID(privateKey, b.chainId)
 	if err != nil {
 		return common.Address{}, nil, err
 	}
-	opts.Nonce = big.NewInt(int64(b.accNonces[acc.Address]))
+	opts.Nonce = big.NewInt(int64(b.takeNonce(acc)))
 	opts.Value = big.NewInt(0)
 	opts.GasTipCap = big.NewInt(100 * params.GWei)
 	opts.GasFeeCap = big.NewInt(101 * params.GWei)
+
 	addr, _, token, err := erc20.DeployERC20(opts, b.client, erc20Name, erc20Symbol)
 	if err != nil {
 		return addr, nil, err
@@ -107,15 +143,15 @@ func (b *TxBenchmark) Prepair() {
 	b.client = ethclient.NewClient(rpcClient)
 	b.chainId, err = b.fetchChainID(context.Background())
 	if err != nil {
-		log.Fatal("Could not fetch chainID", err)
+		log.Fatal("Could not fetch chainID ", err)
 	}
 	log.Println("Fetching accounts' nonces.")
 	if err := b.fetchAllNonces(); err != nil {
-		log.Fatal("Failed to fetch accounts' nonces.", err)
+		log.Fatal("Failed to fetch accounts' nonces. ", err)
 	}
 	erc20Addr, erc20Token, err := b.deployERC20(b.accounts[0])
 	if err != nil {
-		log.Fatal("Could not deploy ERC20 token.", err)
+		log.Fatal("Could not deploy ERC20 token. ", err)
 	} else {
 		log.Println("ERC20 token deployed at:", erc20Addr)
 		b.erc20Token = erc20Token
@@ -123,7 +159,8 @@ func (b *TxBenchmark) Prepair() {
 }
 
 func (b *TxBenchmark) DoWork(workerIndex int) error {
-	return nil
+	acc := b.accounts[workerIndex]
+	return b.transferERC20(acc, acc, big.NewInt(0))
 }
 
 func (b *TxBenchmark) OnFinish(roundIndex int, result *BenchmarkResult) {

@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
@@ -37,9 +38,10 @@ func init() {
 }
 
 func mustCreateWallet(mnemonic string, numAcc uint) *hdwallet.Wallet {
+	fmt.Println("mnemonic", mnemonic)
 	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
 	if err != nil {
-		log.Fatal("Could not create HD wallet.", err)
+		log.Fatal("Could not create HD wallet. ", err)
 	}
 	for i := 0; i < int(numAcc); i++ {
 		walletDerivePath := fmt.Sprintf("m/44'/60'/0'/0/%d", i)
@@ -63,14 +65,15 @@ func run(ctx *cli.Context) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	wallet = mustCreateWallet(string(mnemonic[:]), numAccs)
+	mnemonicStr := strings.TrimSpace(string(mnemonic[:]))
+	wallet = mustCreateWallet(mnemonicStr, numAccs)
 
 	engine := benchmark.NewBenchmarkEngine(benchmark.BenchmarkOptions{
-		MaxThread:   1000,
-		ExecuteRate: 1000,
+		MaxThread:   10000,
+		ExecuteRate: 4000,
 		NumWorkers:  len(wallet.Accounts()),
 		NumRounds:   int(numRounds),
-		Timeout:     1 * time.Second,
+		Timeout:     20 * time.Second,
 	})
 
 	if benchmarkType == 1 {

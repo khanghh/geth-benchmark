@@ -26,6 +26,10 @@ func (s *LimitWaitGroup) Add() {
 	s.AddWithContext(context.Background())
 }
 
+func (s *LimitWaitGroup) Size() int {
+	return len(s.occupiedCh)
+}
+
 func (s *LimitWaitGroup) AddWithContext(ctx context.Context) error {
 	select {
 	case <-ctx.Done():

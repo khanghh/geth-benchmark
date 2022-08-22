@@ -21,7 +21,7 @@ var (
 	accountsFlag = cli.UintFlag{
 		Name:  "accounts",
 		Usage: "Number of accounts to conduct the benchmark test (default: 10000)",
-		Value: 1000,
+		Value: 10000,
 	}
 	roundsFlags = cli.UintFlag{
 		Name:  "rounds",

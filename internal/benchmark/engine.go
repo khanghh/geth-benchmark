@@ -3,6 +3,7 @@ package benchmark
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -56,6 +57,8 @@ type BenchmarkEngine struct {
 	results   []*BenchmarkResult
 	records   map[int]*workerResult
 	testToRun BenchmarkTest
+	result    *BenchmarkResult
+	wg        *LimitWaitGroup
 	mtx       sync.Mutex
 }
 
@@ -63,6 +66,11 @@ func (e *BenchmarkEngine) onWorkerFinished(result *workerResult) {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 	e.records[result.WorkerIndex] = result
+	if result.Error != nil {
+		e.result.Failed += 1
+	} else {
+		e.result.Succeeded += 1
+	}
 }
 
 func (e *BenchmarkEngine) worker(wg *LimitWaitGroup, workerIndex int) {
@@ -76,6 +84,9 @@ func (e *BenchmarkEngine) worker(wg *LimitWaitGroup, workerIndex int) {
 	}()
 	select {
 	case err := <-errCh:
+		if err != nil {
+			fmt.Println(err)
+		}
 		e.onWorkerFinished(&workerResult{
 			WorkerIndex: workerIndex,
 			Elapsed:     time.Since(startTime),
@@ -103,6 +114,7 @@ func (e *BenchmarkEngine) SetBenchmark(test BenchmarkTest) {
 func (e *BenchmarkEngine) runRound(roundIdx int) *BenchmarkResult {
 	startTime := time.Now()
 	wg := NewLimitWaitGroup(e.MaxThread)
+	e.wg = wg
 	for i := 0; i < e.NumWorkers; i++ {
 		e.limiter.Take()
 		wg.Add()
@@ -112,8 +124,19 @@ func (e *BenchmarkEngine) runRound(roundIdx int) *BenchmarkResult {
 	return e.generateResult(startTime)
 }
 
+func (e *BenchmarkEngine) printStats() {
+	for {
+		time.Sleep(1 * time.Second)
+		fmt.Println("Succeeded: ", e.result.Succeeded)
+		fmt.Println("Failed: ", e.result.Failed)
+		fmt.Println("Working: ", e.wg.Size())
+	}
+}
+
 func (e *BenchmarkEngine) Run(ctx context.Context) {
+	e.result = &BenchmarkResult{}
 	e.testToRun.Prepair()
+	go e.printStats()
 	for roundIdx := 0; roundIdx < e.NumRounds; roundIdx++ {
 		result := e.runRound(roundIdx)
 		e.results = append(e.results, result)
