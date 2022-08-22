@@ -35,7 +35,7 @@ type TxBenchmark struct {
 	mtx        sync.Mutex
 }
 
-func (b *TxBenchmark) transferERC20(sender accounts.Account, receiver accounts.Account, value *big.Int) error {
+func (b *TxBenchmark) transferERC20(ctx context.Context, sender accounts.Account, receiver accounts.Account, value *big.Int) error {
 	privateKey, err := b.wallet.PrivateKey(sender)
 	if err != nil {
 		return err
@@ -44,11 +44,12 @@ func (b *TxBenchmark) transferERC20(sender accounts.Account, receiver accounts.A
 	if err != nil {
 		return err
 	}
+	opts.Context = ctx
 	opts.Nonce = big.NewInt(int64(b.takeNonce(sender)))
 	opts.Value = big.NewInt(0)
-	opts.GasTipCap = big.NewInt(101 * params.GWei) // MaxPriorityFeePerGas
-	opts.GasFeeCap = big.NewInt(101 * params.GWei) // MaxFeePerGas
-	opts.GasLimit = 500000
+	opts.GasTipCap = big.NewInt(50001 * params.GWei) // MaxPriorityFeePerGas
+	opts.GasFeeCap = big.NewInt(50001 * params.GWei) // MaxFeePerGas
+	opts.GasLimit = 1000000
 	amount := big.NewInt(0)
 	_, err = b.erc20Token.Transfer(opts, receiver.Address, amount)
 	if err != nil {
@@ -150,9 +151,9 @@ func (b *TxBenchmark) Prepair() {
 	}
 }
 
-func (b *TxBenchmark) DoWork(workerIndex int) error {
+func (b *TxBenchmark) DoWork(ctx context.Context, workerIndex int) error {
 	acc := b.accounts[workerIndex]
-	return b.transferERC20(acc, acc, big.NewInt(0))
+	return b.transferERC20(ctx, acc, acc, big.NewInt(0))
 }
 
 func (b *TxBenchmark) OnFinish(roundIndex int, result *BenchmarkResult) {

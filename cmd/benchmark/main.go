@@ -60,19 +60,19 @@ func run(ctx *cli.Context) {
 	numAccs := ctx.GlobalUint(accountsFlag.Name)
 	numRounds := ctx.GlobalUint(roundsFlags.Name)
 
-	mnemonic, err := ioutil.ReadFile(mnemonicFile)
+	buf, err := ioutil.ReadFile(mnemonicFile)
 	if err != nil {
 		log.Fatal(err)
 	}
-	mnemonicStr := strings.TrimSpace(string(mnemonic[:]))
-	wallet = mustCreateWallet(mnemonicStr, numAccs)
+	mnemonic := strings.TrimSpace(string(buf[:]))
+	wallet = mustCreateWallet(mnemonic, numAccs)
 
 	engine := benchmark.NewBenchmarkEngine(benchmark.BenchmarkOptions{
 		MaxThread:   10000,
 		ExecuteRate: 4000,
 		NumWorkers:  len(wallet.Accounts()),
 		NumRounds:   int(numRounds),
-		Timeout:     20 * time.Second,
+		Timeout:     10 * time.Second,
 	})
 
 	if benchmarkType == 1 {

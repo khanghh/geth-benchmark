@@ -2,7 +2,6 @@ package benchmark
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -14,8 +13,6 @@ import (
 const (
 	updateInterval = 1 * time.Second
 )
-
-var errWorkerTimeout = errors.New("timed out")
 
 type WorkloadFunc func(workerIndex int) error
 type OnRoundFinishedFunc func(roundIndex int, result *BenchmarkResult)
@@ -68,7 +65,7 @@ type BenchmarkOptions struct {
 
 type BenchmarkTest interface {
 	Prepair()
-	DoWork(workerIndex int) error
+	DoWork(ctx context.Context, workerIndex int) error
 	OnFinish(roundIndex int, result *BenchmarkResult)
 }
 
@@ -86,13 +83,13 @@ func (e *BenchmarkEngine) worker(wg *LimitWaitGroup, workerIndex int) {
 	defer func() {
 		wg.Done()
 	}()
+	ctx, cancel := context.WithTimeout(context.Background(), e.Timeout)
+	defer cancel()
 	startTime := time.Now()
 	errCh := make(chan error, 1)
-	go func() {
-		errCh <- e.testToRun.DoWork(workerIndex)
-	}()
 	select {
-	case err := <-errCh:
+	case errCh <- e.testToRun.DoWork(ctx, workerIndex):
+		err := <-errCh
 		if err != nil {
 			fmt.Printf("Worker %d failed: %s\n", workerIndex, err)
 		}
@@ -101,11 +98,12 @@ func (e *BenchmarkEngine) worker(wg *LimitWaitGroup, workerIndex int) {
 			Elapsed:     time.Since(startTime),
 			Error:       err,
 		})
-	case <-time.After(e.Timeout):
+	case <-ctx.Done():
+		fmt.Printf("Worker %d failed: %s\n", workerIndex, ctx.Err())
 		e.result.collectResult(&workerResult{
 			WorkerIndex: workerIndex,
 			Elapsed:     time.Since(startTime),
-			Error:       errWorkerTimeout,
+			Error:       ctx.Err(),
 		})
 	}
 }

@@ -16,8 +16,7 @@ const (
 )
 
 var (
-	listenerRestartDelay   = 1 * time.Second
-	listenerUpdateInterval = 1 * time.Second
+	listenerRestartDelay = 1 * time.Second
 )
 
 type NewHeadeHandleFunc func(*types.Header)
@@ -26,7 +25,6 @@ type NewPendingTxHandleFunc func(common.Hash)
 type NodeListener struct {
 	rpcUrl         string
 	client         *rpc.Client
-	updateTicker   time.Ticker
 	OnNewHead      NewHeadeHandleFunc
 	OnNewPendingTx NewPendingTxHandleFunc
 }
