@@ -157,10 +157,14 @@ func (e *BenchmarkEngine) Run(ctx context.Context) {
 }
 
 func NewBenchmarkEngine(opts BenchmarkOptions) *BenchmarkEngine {
+	exeRate := math.MaxInt64
+	if opts.ExecuteRate != 0 {
+		exeRate = opts.ExecuteRate
+	}
 	return &BenchmarkEngine{
 		BenchmarkOptions: opts,
 		records:          make(map[int]*workerResult),
-		limiter:          ratelimit.New(opts.ExecuteRate),
+		limiter:          ratelimit.New(exeRate),
 		ticker:           *time.NewTicker(updateInterval),
 	}
 }

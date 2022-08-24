@@ -31,6 +31,7 @@ type TxBenchmark struct {
 	chainId    *big.Int
 	client     *ethclient.Client
 	erc20Token *erc20.ERC20
+	erc20Addr  *common.Address
 	wallet     *hdwallet.Wallet
 	mtx        sync.Mutex
 }
@@ -109,22 +110,20 @@ func (b *TxBenchmark) takeNonce(acc accounts.Account) uint64 {
 	return nonce
 }
 
-func (b *TxBenchmark) deployERC20(acc accounts.Account) (common.Address, *erc20.ERC20, error) {
-	privateKey, _ := b.wallet.PrivateKey(acc)
-	opts, err := bind.NewKeyedTransactorWithChainID(privateKey, b.chainId)
-	if err != nil {
-		return common.Address{}, nil, err
+func (b *TxBenchmark) getOrDeployERC20() (*common.Address, *erc20.ERC20, error) {
+	if b.erc20Addr != nil {
+		erc20Token, err := erc20.NewERC20(*b.erc20Addr, b.client)
+		if err != nil {
+			return nil, nil, err
+		}
+		return b.erc20Addr, erc20Token, nil
 	}
-	opts.Nonce = big.NewInt(int64(b.takeNonce(acc)))
-	opts.Value = big.NewInt(0)
-	opts.GasTipCap = big.NewInt(100 * params.GWei)
-	opts.GasFeeCap = big.NewInt(101 * params.GWei)
-
-	addr, _, token, err := erc20.DeployERC20(opts, b.client, erc20Name, erc20Symbol)
+	privateKey, err := b.wallet.PrivateKey(b.accounts[0])
 	if err != nil {
-		return addr, nil, err
+		return nil, nil, err
 	}
-	return addr, token, nil
+	deployment := NewContractDeployment(b.client, privateKey)
+	return deployment.deployERC20(context.Background())
 }
 
 func (b *TxBenchmark) Prepair() {
@@ -142,12 +141,11 @@ func (b *TxBenchmark) Prepair() {
 	if err := b.fetchAllNonces(); err != nil {
 		log.Fatal("Failed to fetch accounts' nonces. ", err)
 	}
-	erc20Addr, erc20Token, err := b.deployERC20(b.accounts[0])
+	b.erc20Addr, b.erc20Token, err = b.getOrDeployERC20()
 	if err != nil {
 		log.Fatal("Could not deploy ERC20 token. ", err)
 	} else {
-		log.Println("ERC20 token deployed at:", erc20Addr)
-		b.erc20Token = erc20Token
+		log.Println("ERC20 token deployed at:", b.erc20Addr)
 	}
 }
 
@@ -160,10 +158,11 @@ func (b *TxBenchmark) OnFinish(roundIndex int, result *BenchmarkResult) {
 
 }
 
-func NewTxBenchmark(rpcUrl string, wallet *hdwallet.Wallet) *TxBenchmark {
+func NewTxBenchmark(rpcUrl string, wallet *hdwallet.Wallet, erc20Addr *common.Address) *TxBenchmark {
 	return &TxBenchmark{
-		rpcUrl:   rpcUrl,
-		wallet:   wallet,
-		accounts: wallet.Accounts(),
+		rpcUrl:    rpcUrl,
+		wallet:    wallet,
+		accounts:  wallet.Accounts(),
+		erc20Addr: erc20Addr,
 	}
 }

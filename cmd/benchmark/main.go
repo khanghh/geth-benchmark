@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 
 	"gopkg.in/urfave/cli.v1"
@@ -33,6 +34,7 @@ func init() {
 		mnemonicFlag,
 		accountsFlag,
 		roundsFlags,
+		erc20AddrFlag,
 	}
 	app.Action = run
 }
@@ -59,6 +61,12 @@ func run(ctx *cli.Context) {
 	mnemonicFile := ctx.GlobalString(mnemonicFlag.Name)
 	numAccs := ctx.GlobalUint(accountsFlag.Name)
 	numRounds := ctx.GlobalUint(roundsFlags.Name)
+	erc20AddrStr := ctx.GlobalString(erc20AddrFlag.Name)
+	var erc20Addr *common.Address = nil
+	if erc20AddrStr != "" {
+		addr := common.HexToAddress(erc20AddrStr)
+		erc20Addr = &addr
+	}
 
 	buf, err := ioutil.ReadFile(mnemonicFile)
 	if err != nil {
@@ -69,16 +77,19 @@ func run(ctx *cli.Context) {
 
 	engine := benchmark.NewBenchmarkEngine(benchmark.BenchmarkOptions{
 		MaxThread:   10000,
-		ExecuteRate: 4000,
+		ExecuteRate: 5000,
 		NumWorkers:  len(wallet.Accounts()),
 		NumRounds:   int(numRounds),
 		Timeout:     10 * time.Second,
 	})
 
 	if benchmarkType == 1 {
-		txBechmark := benchmark.NewTxBenchmark(rpcUrl, wallet)
+		txBechmark := benchmark.NewTxBenchmark(rpcUrl, wallet, erc20Addr)
 		engine.SetBenchmark(txBechmark)
 	} else if benchmarkType == 2 {
+		txBechmark := benchmark.NewCallBenchmark(rpcUrl, wallet, erc20Addr)
+		engine.ExecuteRate = 10000
+		engine.SetBenchmark(txBechmark)
 	} else {
 		log.Fatal("Unknown benchmark type.")
 	}

@@ -28,4 +28,8 @@ var (
 		Usage: "Number of rounds to conduct the benchmark test (default: 1)",
 		Value: 1,
 	}
+	erc20AddrFlag = cli.StringFlag{
+		Name:  "erc20",
+		Usage: "ERC20 token address",
+	}
 )
