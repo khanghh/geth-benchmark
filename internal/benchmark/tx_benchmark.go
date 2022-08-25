@@ -2,6 +2,7 @@ package benchmark
 
 import (
 	"context"
+	"fmt"
 	"geth-benchmark/internal/benchmark/erc20"
 	"geth-benchmark/internal/core"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
 	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
@@ -28,6 +30,7 @@ type TxBenchmark struct {
 	rpcUrl     string
 	accNonces  map[common.Address]uint64
 	accounts   []accounts.Account
+	txns       map[common.Hash]time.Duration
 	chainId    *big.Int
 	client     *ethclient.Client
 	erc20Token *erc20.ERC20
@@ -50,13 +53,34 @@ func (b *TxBenchmark) transferERC20(ctx context.Context, sender accounts.Account
 	opts.Value = big.NewInt(0)
 	opts.GasTipCap = big.NewInt(50001 * params.GWei) // MaxPriorityFeePerGas
 	opts.GasFeeCap = big.NewInt(50001 * params.GWei) // MaxFeePerGas
-	opts.GasLimit = 1000000
+	opts.GasLimit = 30000
 	amount := big.NewInt(0)
 	_, err = b.erc20Token.Transfer(opts, receiver.Address, amount)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (b *TxBenchmark) transferETH(ctx context.Context, sender accounts.Account, receiver accounts.Account, value *big.Int) error {
+	privateKey, err := b.wallet.PrivateKey(sender)
+	if err != nil {
+		return err
+	}
+	tx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   b.chainId,
+		Nonce:     b.takeNonce(sender),
+		GasFeeCap: big.NewInt(100000 * params.GWei),
+		GasTipCap: big.NewInt(100000 * params.GWei),
+		Gas:       21000,
+		To:        &receiver.Address,
+		Value:     value,
+	})
+	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(b.chainId), privateKey)
+	if err != nil {
+		return err
+	}
+	return b.client.SendTransaction(ctx, signedTx)
 }
 
 func (b *TxBenchmark) fetchNonce(ctx context.Context, acc accounts.Account) (uint64, error) {
@@ -151,11 +175,11 @@ func (b *TxBenchmark) Prepair() {
 
 func (b *TxBenchmark) DoWork(ctx context.Context, workerIndex int) error {
 	acc := b.accounts[workerIndex]
-	return b.transferERC20(ctx, acc, acc, big.NewInt(0))
+	return b.transferETH(ctx, acc, acc, big.NewInt(0))
 }
 
 func (b *TxBenchmark) OnFinish(roundIndex int, result *BenchmarkResult) {
-
+	fmt.Println("Wait for all transactions finished")
 }
 
 func NewTxBenchmark(rpcUrl string, wallet *hdwallet.Wallet, erc20Addr *common.Address) *TxBenchmark {

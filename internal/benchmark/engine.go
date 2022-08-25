@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/ratelimit"
@@ -24,6 +25,7 @@ type workerResult struct {
 }
 
 type BenchmarkResult struct {
+	Total      uint64
 	Succeeded  uint64
 	Failed     uint64
 	MaxLatency time.Duration
@@ -76,6 +78,7 @@ type BenchmarkEngine struct {
 	records   map[int]*workerResult
 	testToRun BenchmarkTest
 	result    *BenchmarkResult
+	submitted uint64
 	wg        *LimitWaitGroup
 }
 
@@ -118,53 +121,52 @@ func (e *BenchmarkEngine) SetBenchmark(test BenchmarkTest) {
 	e.testToRun = test
 }
 
-func (e *BenchmarkEngine) runRound(roundIdx int) *BenchmarkResult {
-	startTime := time.Now()
-	wg := NewLimitWaitGroup(e.MaxThread)
-	e.wg = wg
+func (e *BenchmarkEngine) runRound(roundIdx int) {
 	for i := 0; i < e.NumWorkers; i++ {
-		e.limiter.Take()
-		wg.Add()
-		go e.worker(wg, i)
+
 	}
-	wg.Wait()
-	return e.generateResult(startTime)
 }
 
 func (e *BenchmarkEngine) printStatus() {
 	for {
 		time.Sleep(1 * time.Second)
-		fmt.Println("Succeeded: ", e.result.Succeeded)
-		fmt.Println("Failed: ", e.result.Failed)
+		fmt.Println("Submmited:", e.submitted)
+		fmt.Println("Succeeded:", e.result.Succeeded)
+		fmt.Println("Failed:", e.result.Failed)
 		fmt.Printf("MinLatency: %dms\n", e.result.MinLatency/time.Millisecond)
+		fmt.Printf("AvgLatency: %dms\n", e.result.AvgLatency/time.Millisecond)
 		fmt.Printf("MaxLatency: %dms\n", e.result.MaxLatency/time.Millisecond)
 		fmt.Printf("ExecPerSec: %.2f\n", e.result.ExecPerSec)
+		fmt.Printf("SubmitedPerSec: %.2f\n", float64(e.submitted)/float64(time.Since(e.result.StartTime)/time.Second))
+		fmt.Println("Working:", e.wg.Size())
 		fmt.Println()
 	}
 }
 
 func (e *BenchmarkEngine) Run(ctx context.Context) {
+	e.testToRun.Prepair()
 	e.result = &BenchmarkResult{
 		StartTime:  time.Now(),
 		MinLatency: time.Duration(math.MaxInt64),
 	}
-	e.testToRun.Prepair()
 	go e.printStatus()
+	e.wg = NewLimitWaitGroup(e.MaxThread)
 	for roundIdx := 0; roundIdx < e.NumRounds; roundIdx++ {
-		result := e.runRound(roundIdx)
-		e.testToRun.OnFinish(roundIdx, result)
+		for idx := 0; idx < e.NumWorkers; idx++ {
+			e.limiter.Take()
+			e.wg.Add()
+			atomic.AddUint64(&e.submitted, 1)
+			go e.worker(e.wg, idx)
+		}
 	}
+	e.wg.Wait()
 }
 
 func NewBenchmarkEngine(opts BenchmarkOptions) *BenchmarkEngine {
-	exeRate := math.MaxInt64
-	if opts.ExecuteRate != 0 {
-		exeRate = opts.ExecuteRate
-	}
 	return &BenchmarkEngine{
 		BenchmarkOptions: opts,
 		records:          make(map[int]*workerResult),
-		limiter:          ratelimit.New(exeRate),
+		limiter:          ratelimit.New(opts.ExecuteRate, ratelimit.WithSlack(100)),
 		ticker:           *time.NewTicker(updateInterval),
 	}
 }

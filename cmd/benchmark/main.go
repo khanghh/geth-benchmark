@@ -34,6 +34,7 @@ func init() {
 		mnemonicFlag,
 		accountsFlag,
 		roundsFlags,
+		execRateFlag,
 		erc20AddrFlag,
 	}
 	app.Action = run
@@ -61,6 +62,7 @@ func run(ctx *cli.Context) {
 	mnemonicFile := ctx.GlobalString(mnemonicFlag.Name)
 	numAccs := ctx.GlobalUint(accountsFlag.Name)
 	numRounds := ctx.GlobalUint(roundsFlags.Name)
+	execRate := ctx.GlobalUint(execRateFlag.Name)
 	erc20AddrStr := ctx.GlobalString(erc20AddrFlag.Name)
 	var erc20Addr *common.Address = nil
 	if erc20AddrStr != "" {
@@ -77,10 +79,10 @@ func run(ctx *cli.Context) {
 
 	engine := benchmark.NewBenchmarkEngine(benchmark.BenchmarkOptions{
 		MaxThread:   10000,
-		ExecuteRate: 5000,
+		ExecuteRate: int(execRate),
 		NumWorkers:  len(wallet.Accounts()),
 		NumRounds:   int(numRounds),
-		Timeout:     10 * time.Second,
+		Timeout:     20 * time.Second,
 	})
 
 	if benchmarkType == 1 {
@@ -88,7 +90,6 @@ func run(ctx *cli.Context) {
 		engine.SetBenchmark(txBechmark)
 	} else if benchmarkType == 2 {
 		txBechmark := benchmark.NewCallBenchmark(rpcUrl, wallet, erc20Addr)
-		engine.ExecuteRate = 10000
 		engine.SetBenchmark(txBechmark)
 	} else {
 		log.Fatal("Unknown benchmark type.")

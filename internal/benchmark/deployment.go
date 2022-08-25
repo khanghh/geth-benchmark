@@ -62,14 +62,6 @@ func (d *ContractDeployment) deployERC20(pCtx context.Context) (*common.Address,
 	return &addr, token, nil
 }
 
-func (d *ContractDeployment) getERC20TokenByAddress(erc20Addr *common.Address) (*common.Address, *erc20.ERC20, error) {
-	erc20Token, err := erc20.NewERC20(*erc20Addr, d.client)
-	if err != nil {
-		return nil, nil, err
-	}
-	return erc20Addr, erc20Token, nil
-}
-
 func NewContractDeployment(client *ethclient.Client, privateKey *ecdsa.PrivateKey) *ContractDeployment {
 	return &ContractDeployment{
 		client:     client,

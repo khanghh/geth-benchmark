@@ -28,6 +28,11 @@ var (
 		Usage: "Number of rounds to conduct the benchmark test (default: 1)",
 		Value: 1,
 	}
+	execRateFlag = cli.UintFlag{
+		Name:  "exec-rate",
+		Usage: "Benchmark workload execution rate (default: 1000)",
+		Value: 1000,
+	}
 	erc20AddrFlag = cli.StringFlag{
 		Name:  "erc20",
 		Usage: "ERC20 token address",
