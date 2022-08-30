@@ -3,6 +3,7 @@ package testcase
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"geth-benchmark/internal/benchmark/erc20"
 	"math/big"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 )
 
 const (
@@ -23,6 +25,22 @@ const (
 var (
 	nilAddress = common.Address{}
 )
+
+func createHDWallet(mnemonic string, numAcc int) (*hdwallet.Wallet, error) {
+	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < numAcc; i++ {
+		walletDerivePath := fmt.Sprintf("m/44'/60'/0'/0/%d", i)
+		derivationPath := hdwallet.MustParseDerivationPath(walletDerivePath)
+		_, err := wallet.Derive(derivationPath, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, err
+}
 
 func waitForTxConfirmed(ctx context.Context, rpcClient *rpc.Client, hash common.Hash) (*types.Receipt, error) {
 	client := ethclient.NewClient(rpcClient)

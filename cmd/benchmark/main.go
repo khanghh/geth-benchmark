@@ -12,20 +12,18 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 
 	"gopkg.in/urfave/cli.v1"
 )
 
 const (
-	defaultMnemonic = "test test test test test test test test test test test junk"
+	defaultSeedPhrase = "test test test test test test test test test test test junk"
 )
 
 var (
 	gitCommit = ""
 	gitDate   = ""
 	app       *cli.App
-	wallet    *hdwallet.Wallet
 )
 
 func init() {
@@ -36,8 +34,8 @@ func init() {
 	app.Flags = []cli.Flag{
 		testcaseFlag,
 		rpcUrlFlag,
-		mnemonicFlag,
-		accountsFlag,
+		seedPhraseFlag,
+		workersFlag,
 		durationFlag,
 		execRateFlag,
 		erc20AddrFlag,
@@ -45,49 +43,37 @@ func init() {
 	app.Action = run
 }
 
-func mustCreateWallet(mnemonic string, numAcc uint) *hdwallet.Wallet {
-	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
-	if err != nil {
-		log.Fatal("Could not create HD wallet. ", err)
-	}
-	for i := 0; i < int(numAcc); i++ {
-		walletDerivePath := fmt.Sprintf("m/44'/60'/0'/0/%d", i)
-		derivationPath := hdwallet.MustParseDerivationPath(walletDerivePath)
-		_, err := wallet.Derive(derivationPath, true)
+func mustLoadSeedPhrase(seedPhraseFile string) string {
+	seedPhrase := defaultSeedPhrase
+	if seedPhraseFile == "" {
+		fmt.Println("No seed phrase file provided. Fall back to default seed phrase.")
+	} else {
+		buf, err := os.ReadFile(seedPhrase)
 		if err != nil {
-			log.Fatal("Could not generate test accounts.", err)
+			log.Fatal(err)
 		}
+		seedPhrase = strings.TrimSpace(string(buf[:]))
 	}
-	return wallet
+	return seedPhrase
 }
 
 func run(ctx *cli.Context) {
 	testcaseNum := ctx.GlobalUint(testcaseFlag.Name)
 	rpcUrl := ctx.GlobalString(rpcUrlFlag.Name)
-	mnemonicFile := ctx.GlobalString(mnemonicFlag.Name)
-	numAccs := ctx.GlobalUint(accountsFlag.Name)
+	seedPhrase := mustLoadSeedPhrase(ctx.GlobalString(seedPhraseFlag.Name))
+	numWorkers := ctx.GlobalUint(workersFlag.Name)
 	durationStr := ctx.GlobalString(durationFlag.Name)
 	execRate := ctx.GlobalUint(execRateFlag.Name)
 	erc20Addr := common.HexToAddress(ctx.GlobalString(erc20AddrFlag.Name))
 
 	duration, err := time.ParseDuration(durationStr)
 	if err != nil {
-		log.Fatal("Invalid benchmakr duration provided.")
+		log.Fatal("Invalid benchmark duration provided.")
 	}
-
-	mnemonic := defaultMnemonic
-	if mnemonicFile != "" {
-		buf, err := os.ReadFile(mnemonicFile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		mnemonic = strings.TrimSpace(string(buf[:]))
-	}
-	wallet = mustCreateWallet(mnemonic, numAccs)
 
 	engine := benchmark.NewBenchmarkEngine(benchmark.BenchmarkOptions{
 		ExecuteRate: int(execRate),
-		NumWorkers:  len(wallet.Accounts()),
+		NumWorkers:  int(numWorkers),
 		Duration:    duration,
 		Timeout:     20 * time.Second,
 	})
@@ -100,12 +86,13 @@ func run(ctx *cli.Context) {
 		}
 	} else if testcaseNum == 2 {
 		testToRun = &testcase.QueryERC20BalanceBenchmark{
-			RpcUrl:    rpcUrl,
-			Erc20Addr: erc20Addr,
-			Wallet:    wallet,
+			SeedPhrase: seedPhrase,
+			RpcUrl:     rpcUrl,
+			Erc20Addr:  erc20Addr,
+			NumClient:  4,
 		}
 	} else {
-		log.Fatal("Unknown benchmark type.")
+		log.Fatal("Unknown benchmark testcase.")
 	}
 
 	fmt.Println("Starting benchmark test...")

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/ratelimit"
@@ -22,22 +22,23 @@ type workResult struct {
 }
 
 type BenchmarkResult struct {
-	Total      uint64
-	Succeeded  uint64
-	Failed     uint64
-	MaxLatency time.Duration
-	MinLatency time.Duration
-	AvgLatency time.Duration
-	ExecPerSec float64
-	StartTime  time.Time
-	TimeTaken  time.Duration
-	mtx        sync.Mutex
+	Total         uint64
+	Succeeded     uint64
+	Failed        uint64
+	MaxLatency    time.Duration
+	MinLatency    time.Duration
+	AvgLatency    time.Duration
+	ExecPerSec    float64
+	StartTime     time.Time
+	TimeTaken     time.Duration
+	totalExecTime time.Duration
+	mtx           sync.Mutex
 }
 
 func (r *BenchmarkResult) collectResult(work *workResult) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
-	r.TimeTaken += work.Elapsed
+	r.totalExecTime += work.Elapsed
 	if work.Error != nil {
 		r.Failed += 1
 	} else {
@@ -45,12 +46,18 @@ func (r *BenchmarkResult) collectResult(work *workResult) {
 	}
 	execCount := r.Succeeded + r.Failed
 	r.ExecPerSec = float64(execCount) / float64(time.Since(r.StartTime)/time.Second)
-	r.AvgLatency = time.Duration(uint64(r.TimeTaken) / execCount)
+	r.AvgLatency = time.Duration(uint64(r.totalExecTime) / execCount)
 	if work.Elapsed > r.MaxLatency {
 		r.MaxLatency = work.Elapsed
 	}
-	if work.Elapsed < r.MinLatency {
+	if r.MinLatency == 0 || work.Elapsed < r.MinLatency {
 		r.MinLatency = work.Elapsed
+	}
+}
+
+func newBenchmarkResult() *BenchmarkResult {
+	return &BenchmarkResult{
+		StartTime: time.Now(),
 	}
 }
 
@@ -76,32 +83,11 @@ type BenchmarkEngine struct {
 	limiter   ratelimit.Limiter
 	testToRun BenchmarkTest
 	workers   []BenchmarkWorker
-	workCh    chan int
 	result    *BenchmarkResult
-	submitted uint64
 }
 
 func (e *BenchmarkEngine) SetBenchmarkTest(test BenchmarkTest) {
 	e.testToRun = test
-}
-
-func (e *BenchmarkEngine) printStatus() {
-	for {
-		time.Sleep(1 * time.Second)
-		if e.result == nil {
-			continue
-		}
-		fmt.Println("Submmited:", e.submitted)
-		fmt.Println("Succeeded:", e.result.Succeeded)
-		fmt.Println("Failed:", e.result.Failed)
-		fmt.Printf("MinLatency: %dms\n", e.result.MinLatency/time.Millisecond)
-		fmt.Printf("AvgLatency: %dms\n", e.result.AvgLatency/time.Millisecond)
-		fmt.Printf("MaxLatency: %dms\n", e.result.MaxLatency/time.Millisecond)
-		fmt.Printf("ExecPerSec: %.2f\n", e.result.ExecPerSec)
-		fmt.Printf("SubmitedPerSec: %.2f\n", float64(e.submitted)/float64(time.Since(e.result.StartTime)/time.Second))
-		fmt.Println("Pending:", len(e.workCh))
-		fmt.Println()
-	}
 }
 
 func (e *BenchmarkEngine) doWork(worker BenchmarkWorker, workIdx int) error {
@@ -116,7 +102,8 @@ func (e *BenchmarkEngine) doWork(worker BenchmarkWorker, workIdx int) error {
 	}
 }
 
-func (e *BenchmarkEngine) consumeWork(workerIdx int, workCh <-chan int) {
+func (e *BenchmarkEngine) consumeWork(wg *sync.WaitGroup, workerIdx int, workCh <-chan int) {
+	defer wg.Done()
 	worker := e.workers[workerIdx]
 	for workIdx := range workCh {
 		startTime := time.Now()
@@ -137,15 +124,16 @@ func (e *BenchmarkEngine) produceWork(ctx context.Context, workCh chan<- int) {
 		e.limiter.Take()
 		select {
 		case workCh <- workIdx:
+			atomic.AddUint64(&e.result.Total, 1)
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (e *BenchmarkEngine) prepairWorkers() []BenchmarkWorker {
+func (e *BenchmarkEngine) prepairWorkers() {
 	wg := &sync.WaitGroup{}
-	workers := make([]BenchmarkWorker, e.NumWorkers)
+	e.workers = make([]BenchmarkWorker, e.NumWorkers)
 	for workerIdx := 0; workerIdx < len(e.workers); workerIdx++ {
 		wg.Add(1)
 		go func(idx int) {
@@ -154,33 +142,58 @@ func (e *BenchmarkEngine) prepairWorkers() []BenchmarkWorker {
 			if err != nil {
 				log.Fatal("could not create worker ", idx, err)
 			}
-			workers[idx] = worker
+			e.workers[idx] = worker
 		}(workerIdx)
+		time.Sleep(100 * time.Microsecond)
 	}
 	wg.Wait()
-	return workers
+}
+
+func printStatus(result *BenchmarkResult, workCh chan int) {
+	for {
+		time.Sleep(1 * time.Second)
+		if result == nil {
+			continue
+		}
+		fmt.Println("Total:", result.Total)
+		fmt.Println("Succeeded:", result.Succeeded)
+		fmt.Println("Failed:", result.Failed)
+		fmt.Println("MinLatency:", result.MinLatency)
+		fmt.Println("AvgLatency:", result.AvgLatency)
+		fmt.Println("MaxLatency:", result.MaxLatency)
+		fmt.Printf("ExecPerSec: %.2f\n", result.ExecPerSec)
+		fmt.Printf("SubmitedPerSec: %.2f\n", float64(result.Total)/float64(result.TimeTaken/time.Second))
+		fmt.Println("Duration: ", result.TimeTaken)
+		fmt.Println("Pending:", len(workCh))
+		fmt.Println()
+	}
 }
 
 func (e *BenchmarkEngine) Run(ctx context.Context) {
+	fmt.Println("Preparing testcase...")
 	e.testToRun.Prepair()
-	e.workers = e.prepairWorkers()
-	e.result = &BenchmarkResult{
-		StartTime:  time.Now(),
-		MinLatency: time.Duration(math.MaxInt64),
-	}
-	go e.printStatus()
-	workCh := make(chan int, len(e.workers))
-	e.workCh = workCh
+	e.prepairWorkers()
+
+	e.result = newBenchmarkResult()
+	wg := &sync.WaitGroup{}
+	workCh := make(chan int, e.NumWorkers)
 	for workerIdx := 0; workerIdx < e.NumWorkers; workerIdx++ {
-		go e.consumeWork(workerIdx, workCh)
+		wg.Add(1)
+		go e.consumeWork(wg, workerIdx, workCh)
 	}
+	go printStatus(e.result, workCh)
 	e.produceWork(ctx, workCh)
+
+	fmt.Println("Waiting for all workers to finish...")
+	wg.Wait()
+
 	e.testToRun.OnFinish(e.result)
 }
 
 func NewBenchmarkEngine(opts BenchmarkOptions) *BenchmarkEngine {
+	limiter := ratelimit.New(opts.ExecuteRate, ratelimit.WithSlack(opts.ExecuteRate*10/100))
 	return &BenchmarkEngine{
 		BenchmarkOptions: opts,
-		limiter:          ratelimit.New(opts.ExecuteRate, ratelimit.WithSlack(100)),
+		limiter:          limiter,
 	}
 }

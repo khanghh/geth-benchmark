@@ -45,9 +45,6 @@ func (s *LimitWaitGroup) Done() {
 	s.wg.Done()
 }
 
-func (s *LimitWaitGroup) Wait() <-chan struct{} {
+func (s *LimitWaitGroup) Wait() {
 	s.wg.Wait()
-	retCh := make(chan struct{}, 1)
-	retCh <- struct{}{}
-	return retCh
 }

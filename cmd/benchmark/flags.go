@@ -13,18 +13,18 @@ var (
 		Usage: "RPC url of geth node",
 		Value: "ws://localhost:8546",
 	}
-	mnemonicFlag = cli.StringFlag{
-		Name:  "mnemonic",
+	seedPhraseFlag = cli.StringFlag{
+		Name:  "seed",
 		Usage: "Wallet seed phrase file. If not provided, default mnemonic is used",
 	}
-	accountsFlag = cli.UintFlag{
-		Name:  "accounts",
-		Usage: "Number of accounts to run the benchmark test",
-		Value: 10000,
+	workersFlag = cli.UintFlag{
+		Name:  "workers",
+		Usage: "Number of workers to run the benchmark test",
+		Value: 1000,
 	}
 	durationFlag = cli.StringFlag{
 		Name:  "duration",
-		Usage: "Duration in miliseconds to run the benchmark test",
+		Usage: "Duration to run the benchmark test",
 		Value: "10m",
 	}
 	execRateFlag = cli.UintFlag{
