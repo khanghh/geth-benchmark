@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"geth-benchmark/internal/benchmark"
-	"io/ioutil"
+	"geth-benchmark/internal/benchmark/testcase"
 	"log"
 	"os"
 	"path/filepath"
@@ -15,6 +15,10 @@ import (
 	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 
 	"gopkg.in/urfave/cli.v1"
+)
+
+const (
+	defaultMnemonic = "test test test test test test test test test test test junk"
 )
 
 var (
@@ -28,12 +32,13 @@ func init() {
 	app = cli.NewApp()
 	app.Name = filepath.Base(os.Args[0])
 	app.Version = fmt.Sprintf("%s - %s", gitCommit, gitDate)
+	app.Usage = "Ethereum network benchmark tool"
 	app.Flags = []cli.Flag{
-		benchmarkTypeFlag,
+		testcaseFlag,
 		rpcUrlFlag,
 		mnemonicFlag,
 		accountsFlag,
-		roundsFlags,
+		durationFlag,
 		execRateFlag,
 		erc20AddrFlag,
 	}
@@ -57,44 +62,54 @@ func mustCreateWallet(mnemonic string, numAcc uint) *hdwallet.Wallet {
 }
 
 func run(ctx *cli.Context) {
-	benchmarkType := ctx.GlobalUint(benchmarkTypeFlag.Name)
+	testcaseNum := ctx.GlobalUint(testcaseFlag.Name)
 	rpcUrl := ctx.GlobalString(rpcUrlFlag.Name)
 	mnemonicFile := ctx.GlobalString(mnemonicFlag.Name)
 	numAccs := ctx.GlobalUint(accountsFlag.Name)
-	numRounds := ctx.GlobalUint(roundsFlags.Name)
+	durationStr := ctx.GlobalString(durationFlag.Name)
 	execRate := ctx.GlobalUint(execRateFlag.Name)
-	erc20AddrStr := ctx.GlobalString(erc20AddrFlag.Name)
-	var erc20Addr *common.Address = nil
-	if erc20AddrStr != "" {
-		addr := common.HexToAddress(erc20AddrStr)
-		erc20Addr = &addr
+	erc20Addr := common.HexToAddress(ctx.GlobalString(erc20AddrFlag.Name))
+
+	duration, err := time.ParseDuration(durationStr)
+	if err != nil {
+		log.Fatal("Invalid benchmakr duration provided.")
 	}
 
-	buf, err := ioutil.ReadFile(mnemonicFile)
-	if err != nil {
-		log.Fatal(err)
+	mnemonic := defaultMnemonic
+	if mnemonicFile != "" {
+		buf, err := os.ReadFile(mnemonicFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		mnemonic = strings.TrimSpace(string(buf[:]))
 	}
-	mnemonic := strings.TrimSpace(string(buf[:]))
 	wallet = mustCreateWallet(mnemonic, numAccs)
 
 	engine := benchmark.NewBenchmarkEngine(benchmark.BenchmarkOptions{
-		MaxThread:   10000,
 		ExecuteRate: int(execRate),
 		NumWorkers:  len(wallet.Accounts()),
-		NumRounds:   int(numRounds),
+		Duration:    duration,
 		Timeout:     20 * time.Second,
 	})
 
-	if benchmarkType == 1 {
-		txBechmark := benchmark.NewTxBenchmark(rpcUrl, wallet, erc20Addr)
-		engine.SetBenchmark(txBechmark)
-	} else if benchmarkType == 2 {
-		txBechmark := benchmark.NewCallBenchmark(rpcUrl, wallet, erc20Addr)
-		engine.SetBenchmark(txBechmark)
+	var testToRun benchmark.BenchmarkTest
+	if testcaseNum == 1 {
+		testToRun = &testcase.TransferEthBenchmark{
+			RpcUrl:    rpcUrl,
+			Erc20Addr: erc20Addr,
+		}
+	} else if testcaseNum == 2 {
+		testToRun = &testcase.QueryERC20BalanceBenchmark{
+			RpcUrl:    rpcUrl,
+			Erc20Addr: erc20Addr,
+			Wallet:    wallet,
+		}
 	} else {
 		log.Fatal("Unknown benchmark type.")
 	}
+
 	fmt.Println("Starting benchmark test...")
+	engine.SetBenchmarkTest(testToRun)
 	engine.Run(context.Background())
 }
 

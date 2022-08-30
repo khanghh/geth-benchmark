@@ -3,34 +3,33 @@ package main
 import "gopkg.in/urfave/cli.v1"
 
 var (
-	benchmarkTypeFlag = cli.UintFlag{
-		Name:  "type",
-		Usage: "Benchmark type 1-transaction processing, 2-query processing (default: 1)",
+	testcaseFlag = cli.UintFlag{
+		Name:  "testcase",
+		Usage: "Bechmark testcase 1-transaction processing, 2-query processing",
 		Value: 1,
 	}
 	rpcUrlFlag = cli.StringFlag{
 		Name:  "rpc-url",
-		Usage: "RPC url of geth node (default: ws://localhost:8546)",
+		Usage: "RPC url of geth node",
 		Value: "ws://localhost:8546",
 	}
 	mnemonicFlag = cli.StringFlag{
 		Name:  "mnemonic",
-		Usage: "Wallet seed phrase file (default: mnemonic.txt)",
-		Value: "mnemonic.txt",
+		Usage: "Wallet seed phrase file. If not provided, default mnemonic is used",
 	}
 	accountsFlag = cli.UintFlag{
 		Name:  "accounts",
-		Usage: "Number of accounts to conduct the benchmark test (default: 10000)",
+		Usage: "Number of accounts to run the benchmark test",
 		Value: 10000,
 	}
-	roundsFlags = cli.UintFlag{
-		Name:  "rounds",
-		Usage: "Number of rounds to conduct the benchmark test (default: 1)",
-		Value: 1,
+	durationFlag = cli.StringFlag{
+		Name:  "duration",
+		Usage: "Duration in miliseconds to run the benchmark test",
+		Value: "10m",
 	}
 	execRateFlag = cli.UintFlag{
 		Name:  "exec-rate",
-		Usage: "Benchmark workload execution rate (default: 1000)",
+		Usage: "Benchmark workload execution rate",
 		Value: 1000,
 	}
 	erc20AddrFlag = cli.StringFlag{
