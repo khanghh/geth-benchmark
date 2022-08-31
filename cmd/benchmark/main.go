@@ -40,6 +40,7 @@ func init() {
 		durationFlag,
 		execRateFlag,
 		erc20AddrFlag,
+		txReceiptFlag,
 	}
 	app.Action = run
 }
@@ -66,6 +67,7 @@ func run(ctx *cli.Context) {
 	numAccs := ctx.GlobalUint(accountsFlag.Name)
 	durationStr := ctx.GlobalString(durationFlag.Name)
 	execRate := ctx.GlobalUint(execRateFlag.Name)
+	waitForReceipt := ctx.GlobalBool(txReceiptFlag.Name)
 	erc20Addr := common.HexToAddress(ctx.GlobalString(erc20AddrFlag.Name))
 
 	duration, err := time.ParseDuration(durationStr)
@@ -83,9 +85,10 @@ func run(ctx *cli.Context) {
 	var testToRun benchmark.BenchmarkTest
 	if testcaseNum == 1 {
 		testToRun = &testcase.TransferEthBenchmark{
-			SeedPhrase:  seedPhrase,
-			RpcUrl:      rpcUrl,
-			NumAccounts: int(numAccs),
+			SeedPhrase:     seedPhrase,
+			RpcUrl:         rpcUrl,
+			NumAccounts:    int(numAccs),
+			WaitForReceipt: waitForReceipt,
 		}
 	} else if testcaseNum == 2 {
 		testToRun = &testcase.QueryERC20BalanceBenchmark{

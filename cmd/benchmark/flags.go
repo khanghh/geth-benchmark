@@ -41,4 +41,8 @@ var (
 		Name:  "erc20",
 		Usage: "ERC20 token address",
 	}
+	txReceiptFlag = cli.BoolFlag{
+		Name:  "receipt",
+		Usage: "Wait for transaction receipt",
+	}
 )
