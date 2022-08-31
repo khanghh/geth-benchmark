@@ -17,6 +17,11 @@ var (
 		Name:  "seed",
 		Usage: "Wallet seed phrase file. If not provided, default mnemonic is used",
 	}
+	accountsFlag = cli.UintFlag{
+		Name:  "accounts",
+		Usage: "Number of accounts to run the benchmark test",
+		Value: 1000,
+	}
 	workersFlag = cli.UintFlag{
 		Name:  "workers",
 		Usage: "Number of workers to run the benchmark test",

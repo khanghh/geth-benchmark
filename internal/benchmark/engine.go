@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/jedib0t/go-pretty/table"
 	"go.uber.org/ratelimit"
 )
 
@@ -29,6 +31,7 @@ type BenchmarkResult struct {
 	MinLatency    time.Duration
 	AvgLatency    time.Duration
 	ExecPerSec    float64
+	SubmitPerSec  float64
 	StartTime     time.Time
 	TimeTaken     time.Duration
 	totalExecTime time.Duration
@@ -45,7 +48,9 @@ func (r *BenchmarkResult) collectResult(work *workResult) {
 		r.Succeeded += 1
 	}
 	execCount := r.Succeeded + r.Failed
-	r.ExecPerSec = float64(execCount) / float64(time.Since(r.StartTime)/time.Second)
+	r.TimeTaken = time.Since(r.StartTime)
+	r.ExecPerSec = float64(execCount) / float64(r.TimeTaken/time.Second)
+	r.SubmitPerSec = float64(r.Total) / float64(r.TimeTaken/time.Second)
 	r.AvgLatency = time.Duration(uint64(r.totalExecTime) / execCount)
 	if work.Elapsed > r.MaxLatency {
 		r.MaxLatency = work.Elapsed
@@ -69,10 +74,11 @@ type BenchmarkOptions struct {
 }
 
 type BenchmarkWorker interface {
-	DoWork(workerIndex int) error
+	DoWork(ctx context.Context, workerIndex int) error
 }
 
 type BenchmarkTest interface {
+	Name() string
 	Prepair()
 	CreateWorker(workerIdx int) (BenchmarkWorker, error)
 	OnFinish(result *BenchmarkResult)
@@ -95,7 +101,7 @@ func (e *BenchmarkEngine) doWork(worker BenchmarkWorker, workIdx int) error {
 	defer cancel()
 	errCh := make(chan error, 1)
 	select {
-	case errCh <- worker.DoWork(workIdx):
+	case errCh <- worker.DoWork(ctx, workIdx):
 		return <-errCh
 	case <-ctx.Done():
 		return ctx.Err()
@@ -108,7 +114,7 @@ func (e *BenchmarkEngine) consumeWork(wg *sync.WaitGroup, workerIdx int, workCh 
 	for workIdx := range workCh {
 		startTime := time.Now()
 		err := e.doWork(worker, workIdx)
-		go e.result.collectResult(&workResult{
+		e.result.collectResult(&workResult{
 			WorkIndex: workIdx,
 			Elapsed:   time.Since(startTime),
 			Error:     err,
@@ -152,9 +158,7 @@ func (e *BenchmarkEngine) prepairWorkers() {
 func printStatus(result *BenchmarkResult, workCh chan int) {
 	for {
 		time.Sleep(1 * time.Second)
-		if result == nil {
-			continue
-		}
+		timeTaken := time.Since(result.StartTime)
 		fmt.Println("Total:", result.Total)
 		fmt.Println("Succeeded:", result.Succeeded)
 		fmt.Println("Failed:", result.Failed)
@@ -162,11 +166,44 @@ func printStatus(result *BenchmarkResult, workCh chan int) {
 		fmt.Println("AvgLatency:", result.AvgLatency)
 		fmt.Println("MaxLatency:", result.MaxLatency)
 		fmt.Printf("ExecPerSec: %.2f\n", result.ExecPerSec)
-		fmt.Printf("SubmitedPerSec: %.2f\n", float64(result.Total)/float64(result.TimeTaken/time.Second))
-		fmt.Println("Duration: ", result.TimeTaken)
+		fmt.Printf("SubmitedPerSec: %.2f\n", result.SubmitPerSec)
+		fmt.Println("TimeTaken: ", timeTaken)
 		fmt.Println("Pending:", len(workCh))
 		fmt.Println()
 	}
+}
+
+func (e *BenchmarkEngine) printResult() {
+	ret := e.result
+	tw := table.NewWriter()
+	tw.SetOutputMirror(os.Stdout)
+	tw.AppendHeader(table.Row{
+		"TestCase",
+		"Total",
+		"Succeeded",
+		"Failed",
+		"MinLatency",
+		"MaxLatency",
+		"AvgLatency",
+		"SubmitPerSec",
+		"ExecPerSec",
+		"TimeTaken",
+	})
+	tw.AppendRows([]table.Row{
+		{
+			e.testToRun.Name(),
+			ret.Total,
+			ret.Succeeded,
+			ret.Failed,
+			ret.MinLatency,
+			ret.MaxLatency,
+			ret.AvgLatency,
+			ret.SubmitPerSec,
+			ret.ExecPerSec,
+			ret.TimeTaken,
+		},
+	})
+	tw.Render()
 }
 
 func (e *BenchmarkEngine) Run(ctx context.Context) {
@@ -186,8 +223,9 @@ func (e *BenchmarkEngine) Run(ctx context.Context) {
 
 	fmt.Println("Waiting for all workers to finish...")
 	wg.Wait()
-
+	e.result.TimeTaken = time.Since(e.result.StartTime)
 	e.testToRun.OnFinish(e.result)
+	e.printResult()
 }
 
 func NewBenchmarkEngine(opts BenchmarkOptions) *BenchmarkEngine {

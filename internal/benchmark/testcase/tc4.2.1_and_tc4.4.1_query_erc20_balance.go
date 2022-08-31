@@ -6,14 +6,12 @@ import (
 	"geth-benchmark/internal/benchmark"
 	"geth-benchmark/internal/benchmark/erc20"
 	"log"
-	"os"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/jedib0t/go-pretty/v6/table"
 )
 
 type QueryERC20BalanceWorker struct {
@@ -22,25 +20,29 @@ type QueryERC20BalanceWorker struct {
 	accounts   []accounts.Account
 }
 
-func (w *QueryERC20BalanceWorker) DoWork(workIdx int) error {
+func (w *QueryERC20BalanceWorker) DoWork(ctx context.Context, workIdx int) error {
 	acc := w.accounts[workIdx%len(w.accounts)]
 	_, err := w.erc20Token.BalanceOf(&bind.CallOpts{}, acc.Address)
 	return err
 }
 
 type QueryERC20BalanceBenchmark struct {
-	SeedPhrase string
-	RpcUrl     string
-	Erc20Addr  common.Address
-	NumClient  int
-	accounts   []accounts.Account
-	clients    []*rpc.Client
+	SeedPhrase  string
+	RpcUrl      string
+	Erc20Addr   common.Address
+	NumClient   int
+	NumAccounts int
+	accounts    []accounts.Account
+	clients     []*rpc.Client
+}
+
+func (w *QueryERC20BalanceBenchmark) Name() string {
+	return "Query ERC20 balance"
 }
 
 func (b *QueryERC20BalanceBenchmark) Prepair() {
-	numAcc := 10000
-	fmt.Printf("Generating %d accounts\n", numAcc)
-	wallet, err := createHDWallet(b.SeedPhrase, numAcc)
+	fmt.Printf("Generating %d accounts\n", b.NumAccounts)
+	wallet, err := createHDWallet(b.SeedPhrase, b.NumAccounts)
 	if err != nil {
 		log.Fatal("Failed to create HDWallet ", err)
 	}
@@ -86,11 +88,4 @@ func (b *QueryERC20BalanceBenchmark) CreateWorker(workerIndex int) (benchmark.Be
 }
 
 func (b *QueryERC20BalanceBenchmark) OnFinish(result *benchmark.BenchmarkResult) {
-	t := table.NewWriter()
-	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"TestCase", "Total", "Succeeded", "Failed", "AvgLatency", "ExecPerSec", "TimeTaken"})
-	t.AppendRows([]table.Row{
-		{"Query ERC20 token balance", result.Total, result.Succeeded, result.Failed, result.AvgLatency, result.ExecPerSec, result.TimeTaken},
-	})
-	t.Render()
 }

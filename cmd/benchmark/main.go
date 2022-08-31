@@ -35,6 +35,7 @@ func init() {
 		testcaseFlag,
 		rpcUrlFlag,
 		seedPhraseFlag,
+		accountsFlag,
 		workersFlag,
 		durationFlag,
 		execRateFlag,
@@ -62,6 +63,7 @@ func run(ctx *cli.Context) {
 	rpcUrl := ctx.GlobalString(rpcUrlFlag.Name)
 	seedPhrase := mustLoadSeedPhrase(ctx.GlobalString(seedPhraseFlag.Name))
 	numWorkers := ctx.GlobalUint(workersFlag.Name)
+	numAccs := ctx.GlobalUint(accountsFlag.Name)
 	durationStr := ctx.GlobalString(durationFlag.Name)
 	execRate := ctx.GlobalUint(execRateFlag.Name)
 	erc20Addr := common.HexToAddress(ctx.GlobalString(erc20AddrFlag.Name))
@@ -75,21 +77,23 @@ func run(ctx *cli.Context) {
 		ExecuteRate: int(execRate),
 		NumWorkers:  int(numWorkers),
 		Duration:    duration,
-		Timeout:     20 * time.Second,
+		Timeout:     5 * time.Minute,
 	})
 
 	var testToRun benchmark.BenchmarkTest
 	if testcaseNum == 1 {
 		testToRun = &testcase.TransferEthBenchmark{
-			RpcUrl:    rpcUrl,
-			Erc20Addr: erc20Addr,
+			SeedPhrase:  seedPhrase,
+			RpcUrl:      rpcUrl,
+			NumAccounts: int(numAccs),
 		}
 	} else if testcaseNum == 2 {
 		testToRun = &testcase.QueryERC20BalanceBenchmark{
-			SeedPhrase: seedPhrase,
-			RpcUrl:     rpcUrl,
-			Erc20Addr:  erc20Addr,
-			NumClient:  4,
+			SeedPhrase:  seedPhrase,
+			RpcUrl:      rpcUrl,
+			Erc20Addr:   erc20Addr,
+			NumClient:   4,
+			NumAccounts: int(numAccs),
 		}
 	} else {
 		log.Fatal("Unknown benchmark testcase.")

@@ -39,7 +39,7 @@ func createHDWallet(mnemonic string, numAcc int) (*hdwallet.Wallet, error) {
 			return nil, err
 		}
 	}
-	return nil, err
+	return wallet, err
 }
 
 func waitForTxConfirmed(ctx context.Context, rpcClient *rpc.Client, hash common.Hash) (*types.Receipt, error) {
