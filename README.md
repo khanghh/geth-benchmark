@@ -5,21 +5,31 @@ Benchmark tool for ethereum's forks blockchain
 ## Usage
 
 ```bash
+NAME:
+   benchmark - Ethereum network benchmark tool
+
 USAGE:
    benchmark [global options] command [command options] [arguments...]
-   Example ./bin/benchmark --type=1 --rpc-url=ws://localhost:8546 --rounds=1000 --accounts=10000
+   Example ./bin/benchmark --testcase=1 --rpc-url=ws://localhost:8546 --workers=10000 --accounts=10000 --exec-rate=4000 --duration=1h
+
+VERSION:
+   b9b2c36b37149342fcb3cdf7a688eca45d423cb9 - Thu Sep  1 03:57:36 +07 2022
 
 COMMANDS:
      help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
-   --type value      Benchmark type 1-transaction processing, 2-query processing (default: 1) (default: 1)
-   --rpc-url value   RPC url of geth node (default: ws://localhost:8546) (default: "ws://localhost:8546")
-   --mnemonic value  Wallet seed phrase file (default: mnemonic.txt) (default: "mnemonic.txt")
-   --accounts value  Number of accounts to conduct the benchmark test (default: 10000) (default: 10000)
-   --rounds value    Number of rounds to conduct the benchmark test (default: 1) (default: 1)
-   --help, -h        show help
-   --version, -v     print the version
+   --testcase value   Bechmark testcase 1-transaction processing, 2-query processing (default: 1)
+   --rpc-url value    RPC url of geth node (default: "ws://localhost:8546")
+   --seed value       Wallet seed phrase file. If not provided, default mnemonic is used
+   --accounts value   Number of accounts to run the benchmark test (default: 1000)
+   --workers value    Number of workers to run the benchmark test (default: 1000)
+   --duration value   Duration to run the benchmark test (default: "10m")
+   --exec-rate value  Benchmark workload execution rate (default: 1000)
+   --erc20 value      ERC20 token address
+   --receipt          Wait for transaction receipt
+   --help, -h         show help
+   --version, -v      print the versio
 ```
 
 ## Contributing
