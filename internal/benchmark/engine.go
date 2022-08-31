@@ -50,7 +50,6 @@ func (r *BenchmarkResult) collectResult(work *workResult) {
 	execCount := r.Succeeded + r.Failed
 	r.TimeTaken = time.Since(r.StartTime)
 	r.ExecPerSec = float64(execCount) / float64(r.TimeTaken/time.Second)
-	r.SubmitPerSec = float64(r.Total) / float64(r.TimeTaken/time.Second)
 	r.AvgLatency = time.Duration(uint64(r.totalExecTime) / execCount)
 	if work.Elapsed > r.MaxLatency {
 		r.MaxLatency = work.Elapsed
@@ -132,6 +131,7 @@ func (e *BenchmarkEngine) produceWork(ctx context.Context, workCh chan<- int) {
 		case workCh <- workIdx:
 			atomic.AddUint64(&e.result.Total, 1)
 		case <-ctx.Done():
+			e.result.SubmitPerSec = float64(e.result.Total) / float64(time.Since(e.result.StartTime)/time.Second)
 			return
 		}
 	}
@@ -166,7 +166,7 @@ func printStatus(result *BenchmarkResult, workCh chan int) {
 		fmt.Println("AvgLatency:", result.AvgLatency)
 		fmt.Println("MaxLatency:", result.MaxLatency)
 		fmt.Printf("ExecPerSec: %.2f\n", result.ExecPerSec)
-		fmt.Printf("SubmitedPerSec: %.2f\n", result.SubmitPerSec)
+		fmt.Printf("SubmitedPerSec: %.2f\n", float64(result.Total)/float64(timeTaken/time.Second))
 		fmt.Println("TimeTaken: ", timeTaken)
 		fmt.Println("Pending:", len(workCh))
 		fmt.Println()
