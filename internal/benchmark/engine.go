@@ -49,7 +49,7 @@ func (r *BenchmarkResult) collectResult(work *workResult) {
 	}
 	execCount := r.Succeeded + r.Failed
 	r.TimeTaken = time.Since(r.StartTime)
-	r.ExecPerSec = float64(execCount) / float64(r.TimeTaken/time.Second)
+	r.ExecPerSec = float64(execCount*uint64(time.Second)) / float64(r.TimeTaken)
 	r.AvgLatency = time.Duration(uint64(r.totalExecTime) / execCount)
 	if work.Elapsed > r.MaxLatency {
 		r.MaxLatency = work.Elapsed
@@ -123,15 +123,13 @@ func (e *BenchmarkEngine) consumeWork(wg *sync.WaitGroup, workerIdx int, workCh 
 
 func (e *BenchmarkEngine) produceWork(ctx context.Context, workCh chan<- int) {
 	defer close(workCh)
-	ctx, cancel := context.WithTimeout(ctx, e.Duration)
-	defer cancel()
+	deadline := time.Now().Add(e.Duration)
 	for workIdx := 0; true; workIdx++ {
 		e.limiter.Take()
-		select {
-		case workCh <- workIdx:
-			atomic.AddUint64(&e.result.Total, 1)
-		case <-ctx.Done():
-			e.result.SubmitPerSec = float64(e.result.Total) / float64(time.Since(e.result.StartTime)/time.Second)
+		workCh <- workIdx
+		atomic.AddUint64(&e.result.Total, 1)
+		e.result.SubmitPerSec = float64(e.result.Total*uint64(time.Second)) / float64(time.Since(e.result.StartTime))
+		if time.Now().After(deadline) {
 			return
 		}
 	}
@@ -166,7 +164,7 @@ func printStatus(result *BenchmarkResult, workCh chan int) {
 		fmt.Println("AvgLatency:", result.AvgLatency)
 		fmt.Println("MaxLatency:", result.MaxLatency)
 		fmt.Printf("ExecPerSec: %.2f\n", result.ExecPerSec)
-		fmt.Printf("SubmitedPerSec: %.2f\n", float64(result.Total)/float64(timeTaken/time.Second))
+		fmt.Printf("SubmitedPerSec: %.2f\n", result.SubmitPerSec)
 		fmt.Println("TimeTaken: ", timeTaken)
 		fmt.Println("Pending:", len(workCh))
 		fmt.Println()
@@ -198,8 +196,8 @@ func (e *BenchmarkEngine) printResult() {
 			ret.MinLatency,
 			ret.MaxLatency,
 			ret.AvgLatency,
-			ret.SubmitPerSec,
-			ret.ExecPerSec,
+			fmt.Sprintf("%.2f", ret.SubmitPerSec),
+			fmt.Sprintf("%.2f", ret.ExecPerSec),
 			ret.TimeTaken,
 		},
 	})
@@ -211,19 +209,18 @@ func (e *BenchmarkEngine) Run(ctx context.Context) {
 	e.testToRun.Prepair()
 	e.prepairWorkers()
 
-	e.result = newBenchmarkResult()
 	wg := &sync.WaitGroup{}
-	workCh := make(chan int, e.NumWorkers)
+	workCh := make(chan int, 10*e.ExecuteRate)
 	for workerIdx := 0; workerIdx < e.NumWorkers; workerIdx++ {
 		wg.Add(1)
 		go e.consumeWork(wg, workerIdx, workCh)
 	}
+	e.result = newBenchmarkResult()
 	go printStatus(e.result, workCh)
 	e.produceWork(ctx, workCh)
 
 	fmt.Println("Waiting for all workers to finish...")
 	wg.Wait()
-	e.result.TimeTaken = time.Since(e.result.StartTime)
 	e.testToRun.OnFinish(e.result)
 	e.printResult()
 }
