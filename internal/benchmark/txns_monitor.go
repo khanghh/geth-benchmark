@@ -3,7 +3,6 @@ package benchmark
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 
@@ -19,55 +18,44 @@ type TxnsMonitor struct {
 	mtx     sync.Mutex
 }
 
-func (m *TxnsMonitor) parseReceiptsBlock(blockNum *big.Int) ([]*types.Receipt, error) {
-	block, err := ethclient.NewClient(m.client).BlockByNumber(context.Background(), blockNum)
-	if err != nil {
-		return nil, nil
-	}
+func (m *TxnsMonitor) checkForTxnReceipts() (int, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	txnsConfirmed := 0
 	batchReq := []rpc.BatchElem{}
-	transactions := block.Transactions()
-	for _, tx := range transactions {
+	for txHash := range m.txnSubs {
 		batchElem := rpc.BatchElem{
 			Method: "eth_getTransactionReceipt",
-			Args:   []interface{}{tx.Hash()},
+			Args:   []interface{}{txHash},
 			Result: new(types.Receipt),
 		}
 		batchReq = append(batchReq, batchElem)
 	}
 	if err := m.client.BatchCall(batchReq); err != nil {
-		return nil, err
+		return 0, err
 	}
-	ret := make([]*types.Receipt, len(transactions))
-	for idx, elem := range batchReq {
+	for _, elem := range batchReq {
 		receipt := elem.Result.(*types.Receipt)
-		ret[idx] = receipt
-	}
-	return ret, nil
-}
-
-func (m *TxnsMonitor) dispatchReceipts(receipts []*types.Receipt) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	for _, receipt := range receipts {
 		if sub, ok := m.txnSubs[receipt.TxHash]; ok {
 			sub <- receipt
 			close(sub)
+			delete(m.txnSubs, receipt.TxHash)
+			txnsConfirmed += 1
 		}
 	}
+	return txnsConfirmed, nil
 }
 
 func (m *TxnsMonitor) mainLoop(headCh chan *types.Header) {
 	for head := range headCh {
-		fmt.Println("onNewHead", head.Number)
-		go func(blockNum *big.Int, startTime time.Time) {
-			receipts, err := m.parseReceiptsBlock(blockNum)
-			if err != nil {
-				fmt.Println("Could not parse block", blockNum, err)
-				return
-			}
-			fmt.Printf("=====> New head %d: %d txns. take %v\n", blockNum, len(receipts), time.Since(startTime))
-			m.dispatchReceipts(receipts)
-		}(head.Number, time.Now())
+		startTime := time.Now()
+		txnCount := len(m.txnSubs)
+		txnsConfirmed, err := m.checkForTxnReceipts()
+		if err != nil {
+			fmt.Println("Could not fetch tx receipts", err)
+			return
+		}
+		fmt.Printf("=====> New head %d: %d/%d txns confirmed. take %v\n", head.Number, txnsConfirmed, txnCount, time.Since(startTime))
 	}
 }
 

@@ -47,11 +47,39 @@ func (b *TransferEthBenchmark) transferETH(ctx context.Context, nonce uint64, se
 	tx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   b.chainId,
 		Nonce:     nonce,
-		GasFeeCap: big.NewInt(100000 * params.GWei),
-		GasTipCap: big.NewInt(100000 * params.GWei),
+		GasFeeCap: big.NewInt(10 * params.GWei),
+		GasTipCap: big.NewInt(10 * params.GWei),
 		Gas:       21000,
 		To:        &receiver.Address,
 		Value:     value,
+	})
+	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(b.chainId), privateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := client.SendTransaction(ctx, signedTx); err != nil {
+		return nil, err
+	}
+	return signedTx, err
+}
+
+func (b *TransferEthBenchmark) sendETH(ctx context.Context, nonce uint64, sender accounts.Account, receiver accounts.Account, value *big.Int) (*types.Transaction, error) {
+	client := ethclient.NewClient(b.client)
+	privateKey, err := b.wallet.PrivateKey(sender)
+	if err != nil {
+		return nil, err
+	}
+	gasPrice, err := client.SuggestGasPrice(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tx := types.NewTx(&types.LegacyTx{
+		Nonce:    nonce,
+		To:       &receiver.Address,
+		Value:    value,
+		Gas:      21000,
+		GasPrice: gasPrice,
 	})
 	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(b.chainId), privateKey)
 	if err != nil {
@@ -139,7 +167,7 @@ func (w *TransferEthBenchmark) DoWork(ctx context.Context, workIdx int) error {
 	accIdx := workIdx % len(w.accounts)
 	acc := w.accounts[accIdx]
 	nonce := w.takeNonce(accIdx)
-	tx, err := w.transferETH(context.Background(), uint64(nonce), acc, acc, big.NewInt(0))
+	tx, err := w.sendETH(context.Background(), uint64(nonce), acc, acc, big.NewInt(0))
 	if err != nil {
 		return err
 	}

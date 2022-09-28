@@ -27,9 +27,9 @@ GLOBAL OPTIONS:
    --duration value   Duration to run the benchmark test (default: "10m")
    --exec-rate value  Benchmark workload execution rate (default: 1000)
    --erc20 value      ERC20 token address
-   --receipt          Wait for transaction receipt
+   --receipt          Wait for transaction receipts
    --help, -h         show help
-   --version, -v      print the versio
+   --version, -v      print the version
 ```
 
 ## Contributing

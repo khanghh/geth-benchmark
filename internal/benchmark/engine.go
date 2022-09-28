@@ -43,6 +43,7 @@ func (r *BenchmarkResult) collectResult(work *workResult) {
 	defer r.mtx.Unlock()
 	r.totalExecTime += work.Elapsed
 	if work.Error != nil {
+		fmt.Println(work.Error)
 		r.Failed += 1
 	} else {
 		r.Succeeded += 1
