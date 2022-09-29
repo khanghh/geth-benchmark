@@ -34,8 +34,8 @@ func init() {
 	app.Flags = []cli.Flag{
 		testcaseFlag,
 		rpcUrlFlag,
+		connectionsFlags,
 		seedPhraseFlag,
-		accountsFlag,
 		workersFlag,
 		durationFlag,
 		execRateFlag,
@@ -62,9 +62,9 @@ func mustLoadSeedPhrase(seedPhraseFile string) string {
 func run(ctx *cli.Context) {
 	testcaseNum := ctx.GlobalUint(testcaseFlag.Name)
 	rpcUrl := ctx.GlobalString(rpcUrlFlag.Name)
+	numClients := ctx.GlobalUint(connectionsFlags.Name)
 	seedPhrase := mustLoadSeedPhrase(ctx.GlobalString(seedPhraseFlag.Name))
 	numWorkers := ctx.GlobalUint(workersFlag.Name)
-	numAccs := ctx.GlobalUint(accountsFlag.Name)
 	durationStr := ctx.GlobalString(durationFlag.Name)
 	execRate := ctx.GlobalUint(execRateFlag.Name)
 	waitForReceipt := ctx.GlobalBool(txReceiptFlag.Name)
@@ -75,34 +75,31 @@ func run(ctx *cli.Context) {
 		log.Fatal("Invalid benchmark duration provided.")
 	}
 
-	engine := benchmark.NewBenchmarkEngine(benchmark.BenchmarkOptions{
-		ExecuteRate: int(execRate),
+	engine := benchmark.NewBenchmarkEngine(benchmark.Options{
+		RpcUrl:      rpcUrl,
+		NumClients:  int(numClients),
 		NumWorkers:  int(numWorkers),
+		ExecuteRate: int(execRate),
 		Duration:    duration,
 		Timeout:     5 * time.Minute,
 	})
 
 	var testToRun benchmark.BenchmarkTest
 	if testcaseNum == 1 {
-		testToRun = &testcase.TransferEthBenchmark{
+		testToRun = &testcase.TransferEth{
 			SeedPhrase:     seedPhrase,
-			RpcUrl:         rpcUrl,
-			NumAccounts:    int(numAccs),
 			WaitForReceipt: waitForReceipt,
 		}
 	} else if testcaseNum == 2 {
-		testToRun = &testcase.QueryERC20BalanceBenchmark{
-			SeedPhrase:  seedPhrase,
-			RpcUrl:      rpcUrl,
-			Erc20Addr:   erc20Addr,
-			NumClient:   4,
-			NumAccounts: int(numAccs),
+		testToRun = &testcase.QueryERC20Balance{
+			SeedPhrase: seedPhrase,
+			Erc20Addr:  erc20Addr,
 		}
 	} else {
 		log.Fatal("Unknown benchmark testcase.")
 	}
 
-	fmt.Println("Starting benchmark test...")
+	fmt.Println("Starting benchmark test.")
 	engine.SetBenchmarkTest(testToRun)
 	engine.Run(context.Background())
 }

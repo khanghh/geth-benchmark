@@ -1,10 +1,8 @@
-package testcase
+package erc20
 
 import (
 	"context"
 	"crypto/ecdsa"
-	"fmt"
-	"geth-benchmark/internal/benchmark/erc20"
 	"math/big"
 	"time"
 
@@ -14,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
-	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 )
 
 const (
@@ -25,22 +22,6 @@ const (
 var (
 	nilAddress = common.Address{}
 )
-
-func createHDWallet(mnemonic string, numAcc int) (*hdwallet.Wallet, error) {
-	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
-	if err != nil {
-		return nil, err
-	}
-	for i := 0; i < numAcc; i++ {
-		walletDerivePath := fmt.Sprintf("m/44'/60'/0'/0/%d", i)
-		derivationPath := hdwallet.MustParseDerivationPath(walletDerivePath)
-		_, err := wallet.Derive(derivationPath, true)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return wallet, err
-}
 
 func waitForTxConfirmed(ctx context.Context, rpcClient *rpc.Client, hash common.Hash) (*types.Receipt, error) {
 	client := ethclient.NewClient(rpcClient)
@@ -58,7 +39,7 @@ func waitForTxConfirmed(ctx context.Context, rpcClient *rpc.Client, hash common.
 	}
 }
 
-func deployERC20(ctx context.Context, rpcClient *rpc.Client, privateKey *ecdsa.PrivateKey) (common.Address, *erc20.ERC20, error) {
+func DeployBenchmarkToken(ctx context.Context, rpcClient *rpc.Client, privateKey *ecdsa.PrivateKey) (common.Address, *ERC20, error) {
 	client := ethclient.NewClient(rpcClient)
 	chainId, err := client.ChainID(ctx)
 	if err != nil {
@@ -71,7 +52,7 @@ func deployERC20(ctx context.Context, rpcClient *rpc.Client, privateKey *ecdsa.P
 	opts.Value = big.NewInt(0)
 	opts.GasTipCap = big.NewInt(100 * params.GWei)
 	opts.GasFeeCap = big.NewInt(101 * params.GWei)
-	addr, tx, erc20Token, err := erc20.DeployERC20(opts, client, erc20TokenName, erc20TokenSymbol)
+	addr, tx, erc20Token, err := DeployERC20(opts, client, erc20TokenName, erc20TokenSymbol)
 	if err != nil {
 		return nilAddress, nil, err
 	}

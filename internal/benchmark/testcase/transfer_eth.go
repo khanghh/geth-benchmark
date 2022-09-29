@@ -2,190 +2,156 @@ package testcase
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"geth-benchmark/internal/benchmark"
 	"log"
 	"math/big"
-	"sync"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
-	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 )
 
-type TransferEthBenchmark struct {
-	SeedPhrase     string
-	RpcUrl         string
-	TxTimeout      time.Duration
-	NumAccounts    int
-	WaitForReceipt bool
-	monitor        *benchmark.TxnsMonitor
-	wallet         *hdwallet.Wallet
+type waitForReceiptFunc func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
+
+type TransferEthWorker struct {
+	client         *ethclient.Client
 	chainId        *big.Int
-	accounts       []accounts.Account
-	nonces         []int64
-	client         *rpc.Client
-	mtx            sync.Mutex
+	account        accounts.Account
+	privateKey     *ecdsa.PrivateKey
+	pendingNonce   uint64
+	waitForReceipt waitForReceiptFunc
 }
 
-func (w *TransferEthBenchmark) Name() string {
-	return "Transfer ETH"
-}
-
-func (b *TransferEthBenchmark) transferETH(ctx context.Context, nonce uint64, sender accounts.Account, receiver accounts.Account, value *big.Int) (*types.Transaction, error) {
-	client := ethclient.NewClient(b.client)
-	privateKey, err := b.wallet.PrivateKey(sender)
-	if err != nil {
-		return nil, err
-	}
+func (w *TransferEthWorker) eip1559TransferETH(ctx context.Context, receiverAddr common.Address, value *big.Int) (*types.Transaction, error) {
 	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   b.chainId,
-		Nonce:     nonce,
+		ChainID:   w.chainId,
+		Nonce:     w.pendingNonce,
 		GasFeeCap: big.NewInt(10 * params.GWei),
 		GasTipCap: big.NewInt(10 * params.GWei),
 		Gas:       21000,
-		To:        &receiver.Address,
+		To:        &receiverAddr,
 		Value:     value,
 	})
-	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(b.chainId), privateKey)
+	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(w.chainId), w.privateKey)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := client.SendTransaction(ctx, signedTx); err != nil {
+	if err := w.client.SendTransaction(ctx, signedTx); err != nil {
 		return nil, err
 	}
+	w.pendingNonce += 1
 	return signedTx, err
 }
 
-func (b *TransferEthBenchmark) sendETH(ctx context.Context, nonce uint64, sender accounts.Account, receiver accounts.Account, value *big.Int) (*types.Transaction, error) {
-	client := ethclient.NewClient(b.client)
-	privateKey, err := b.wallet.PrivateKey(sender)
-	if err != nil {
-		return nil, err
-	}
-	gasPrice, err := client.SuggestGasPrice(ctx)
+func (w *TransferEthWorker) transferETH(ctx context.Context, receiverAddr common.Address, value *big.Int) (*types.Transaction, error) {
+	gasPrice, err := w.client.SuggestGasPrice(ctx)
 	if err != nil {
 		return nil, err
 	}
 	tx := types.NewTx(&types.LegacyTx{
-		Nonce:    nonce,
-		To:       &receiver.Address,
+		Nonce:    w.pendingNonce,
+		To:       &receiverAddr,
 		Value:    value,
 		Gas:      21000,
 		GasPrice: gasPrice,
 	})
-	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(b.chainId), privateKey)
+	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(w.chainId), w.privateKey)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := client.SendTransaction(ctx, signedTx); err != nil {
+	if err := w.client.SendTransaction(ctx, signedTx); err != nil {
 		return nil, err
 	}
+	w.pendingNonce += 1
 	return signedTx, err
 }
 
-func (b *TransferEthBenchmark) fetchNonces() error {
-	batchReq := []rpc.BatchElem{}
-	b.nonces = make([]int64, len(b.accounts))
-	for _, acc := range b.accounts {
-		batchElem := rpc.BatchElem{
-			Method: "eth_getTransactionCount",
-			Args:   []interface{}{acc.Address, "pending"},
-			Result: new(hexutil.Uint64),
-		}
-		batchReq = append(batchReq, batchElem)
-	}
-	err := b.client.BatchCall(batchReq)
-	if err != nil {
-		return nil
-	}
-	for idx, elem := range batchReq {
-		b.nonces[idx] = int64(*elem.Result.(*hexutil.Uint64))
-	}
-	return nil
-}
-
-func (b *TransferEthBenchmark) Prepair() {
-	fmt.Printf("Generating %d accounts\n", b.NumAccounts)
-	wallet, err := createHDWallet(b.SeedPhrase, b.NumAccounts)
-	if err != nil {
-		log.Fatal("Failed to create HDWallet ", err)
-	}
-	b.wallet = wallet
-	b.accounts = wallet.Accounts()
-
-	fmt.Println("Dialing RPC node", b.RpcUrl)
-	rpcClient, err := rpc.Dial(b.RpcUrl)
-	if err != nil {
-		log.Fatal(err)
-	}
-	b.client = rpcClient
-
-	client := ethclient.NewClient(rpcClient)
-	chainId, err := client.ChainID(context.Background())
-	if err != nil {
-		fmt.Println("Could not fetch chainId", err)
-	}
-	b.chainId = chainId
-
-	fmt.Println("Fetching accounts' nonces.")
-	if err := b.fetchNonces(); err != nil {
-		fmt.Println("Failed to fetch accounts' nonces", err)
-	}
-
-	if b.WaitForReceipt {
-		fmt.Println("Staring transactions monitor")
-		fmt.Println("Dialing RPC node", b.RpcUrl)
-		rpcClient, err = rpc.Dial(b.RpcUrl)
-		if err != nil {
-			log.Fatal(err)
-		}
-		b.monitor, err = benchmark.NewTxnsMonitor(rpcClient)
-		if err != nil {
-			fmt.Println("Could not create TxnsMonitor", err)
-		}
-	}
-}
-
-func (b *TransferEthBenchmark) takeNonce(accIdx int) int64 {
-	b.mtx.Lock()
-	defer b.mtx.Unlock()
-	nonce := b.nonces[accIdx]
-	b.nonces[accIdx] += 1
-	return nonce
-}
-
-func (w *TransferEthBenchmark) DoWork(ctx context.Context, workIdx int) error {
-	accIdx := workIdx % len(w.accounts)
-	acc := w.accounts[accIdx]
-	nonce := w.takeNonce(accIdx)
-	tx, err := w.sendETH(context.Background(), uint64(nonce), acc, acc, big.NewInt(0))
+func (w *TransferEthWorker) DoWork(ctx context.Context, workIdx int) error {
+	tx, err := w.transferETH(context.Background(), w.account.Address, big.NewInt(0))
 	if err != nil {
 		return err
 	}
-	if w.WaitForReceipt {
-		receipt, err := w.monitor.WaitForTxnReceipt(ctx, tx.Hash())
+	if w.waitForReceipt != nil {
+		receipt, err := w.waitForReceipt(ctx, tx.Hash())
 		if err != nil {
 			return err
 		}
 		if receipt.Status == 0 {
-			return errors.New("transaction failed")
+			return errors.New("transaction reverted")
 		}
 	}
 	return nil
 }
 
-func (b *TransferEthBenchmark) CreateWorker(workerIndex int) (benchmark.BenchmarkWorker, error) {
-	return b, nil
+type TransferEth struct {
+	SeedPhrase     string
+	WaitForReceipt bool
+	monitor        *benchmark.TxnsMonitor
+	wallet         *TestWallet
+	chainId        *big.Int
 }
 
-func (b *TransferEthBenchmark) OnFinish(result *benchmark.BenchmarkResult) {
+func (w *TransferEth) Name() string {
+	return fmt.Sprintf("%v", TransferEth{})
+}
+
+func (b *TransferEth) Prepair(opts benchmark.Options) {
+	log.Println("Dialing RPC node", opts.RpcUrl)
+	rpcClient, err := rpc.Dial(opts.RpcUrl)
+	if err != nil {
+		log.Fatal(err)
+	}
+	client := ethclient.NewClient(rpcClient)
+	chainId, err := client.ChainID(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	b.chainId = chainId
+
+	log.Printf("Generating %d accounts\n", opts.NumWorkers)
+	wallet, err := NewTestWallet(b.SeedPhrase, opts.NumWorkers)
+	if err != nil {
+		log.Fatal(err)
+	}
+	b.wallet = wallet
+
+	log.Println("Fetching accounts' nonces.")
+	_, err = b.wallet.FetchNonces(rpcClient)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if b.WaitForReceipt {
+		log.Println("Staring transactions monitor.")
+		b.monitor, err = benchmark.NewTxnsMonitor(rpcClient)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		rpcClient.Close()
+	}
+}
+
+func (b *TransferEth) CreateWorker(rpcClient *rpc.Client, workerIdx int) benchmark.BenchmarkWorker {
+	worker := &TransferEthWorker{
+		client:       ethclient.NewClient(rpcClient),
+		chainId:      b.chainId,
+		account:      b.wallet.Accounts[workerIdx],
+		privateKey:   b.wallet.PrivateKeys[workerIdx],
+		pendingNonce: b.wallet.PendingNonces[workerIdx],
+	}
+	if b.WaitForReceipt {
+		worker.waitForReceipt = b.monitor.WaitForTxnReceipt
+	}
+	return worker
+}
+
+func (b *TransferEth) OnFinish(result *benchmark.BenchmarkResult) {
 }
