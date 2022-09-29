@@ -81,7 +81,7 @@ func run(ctx *cli.Context) {
 		NumWorkers:  int(numWorkers),
 		ExecuteRate: int(execRate),
 		Duration:    duration,
-		Timeout:     5 * time.Minute,
+		Timeout:     1 * time.Minute,
 	})
 
 	var testToRun benchmark.BenchmarkTest

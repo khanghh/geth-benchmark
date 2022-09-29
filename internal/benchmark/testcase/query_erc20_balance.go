@@ -6,6 +6,7 @@ import (
 	"geth-benchmark/internal/benchmark"
 	"geth-benchmark/internal/benchmark/erc20"
 	"log"
+	"reflect"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -35,7 +36,7 @@ type QueryERC20Balance struct {
 }
 
 func (w *QueryERC20Balance) Name() string {
-	return fmt.Sprintf("%v", QueryERC20Balance{})
+	return reflect.TypeOf(*w).Name()
 }
 
 func (b *QueryERC20Balance) Prepair(opts benchmark.Options) {

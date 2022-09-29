@@ -4,10 +4,10 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
-	"fmt"
 	"geth-benchmark/internal/benchmark"
 	"log"
 	"math/big"
+	"reflect"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -100,7 +100,7 @@ type TransferEth struct {
 }
 
 func (w *TransferEth) Name() string {
-	return fmt.Sprintf("%v", TransferEth{})
+	return reflect.TypeOf(*w).Name()
 }
 
 func (b *TransferEth) Prepair(opts benchmark.Options) {
