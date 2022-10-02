@@ -35,19 +35,20 @@ type QueryERC20Balance struct {
 	wallet     *TestWallet
 }
 
-func (w *QueryERC20Balance) Name() string {
-	return reflect.TypeOf(*w).Name()
+func (t *QueryERC20Balance) Name() string {
+	return reflect.TypeOf(*t).Name()
 }
 
-func (b *QueryERC20Balance) Prepair(opts benchmark.Options) {
+func (t *QueryERC20Balance) Prepair(opts benchmark.Options) {
+	log.Println("Prepairing testcase ", t.Name())
 	fmt.Printf("Generating %d accounts\n", opts.NumWorkers)
-	wallet, err := NewTestWallet(b.SeedPhrase, opts.NumWorkers)
+	wallet, err := NewTestWallet(t.SeedPhrase, opts.NumWorkers)
 	if err != nil {
 		log.Fatal("Failed to generate test accounts", err)
 	}
-	b.wallet = wallet
+	t.wallet = wallet
 
-	if b.Erc20Addr == nilAddress {
+	if t.Erc20Addr == nilAddress {
 		fmt.Println("Deploying ERC20.", opts.RpcUrl)
 		rpcClient, err := rpc.Dial(opts.RpcUrl)
 		if err != nil {
@@ -58,18 +59,18 @@ func (b *QueryERC20Balance) Prepair(opts benchmark.Options) {
 		if err != nil {
 			log.Fatal("Failed to deploy ERC20 token", err)
 		}
-		b.Erc20Addr = erc20Addr
-		fmt.Println("ERC20Token deployed at", b.Erc20Addr)
+		t.Erc20Addr = erc20Addr
+		fmt.Println("ERC20Token deployed at", t.Erc20Addr)
 	}
 }
 
-func (b *QueryERC20Balance) CreateWorker(rpcClient *rpc.Client, workerIdx int) benchmark.BenchmarkWorker {
+func (t *QueryERC20Balance) CreateWorker(rpcClient *rpc.Client, workerIdx int) benchmark.BenchmarkWorker {
 	client := ethclient.NewClient(rpcClient)
-	erc20Token, err := erc20.NewERC20(b.Erc20Addr, client)
+	erc20Token, err := erc20.NewERC20(t.Erc20Addr, client)
 	if err != nil {
 		panic(err)
 	}
-	acc := b.wallet.Accounts[workerIdx]
+	acc := t.wallet.Accounts[workerIdx]
 	return &QueryERC20BalanceWorker{
 		client:     client,
 		erc20Token: erc20Token,
@@ -77,5 +78,5 @@ func (b *QueryERC20Balance) CreateWorker(rpcClient *rpc.Client, workerIdx int) b
 	}
 }
 
-func (b *QueryERC20Balance) OnFinish(result *benchmark.BenchmarkResult) {
+func (t *QueryERC20Balance) OnFinish(result *benchmark.BenchmarkResult) {
 }

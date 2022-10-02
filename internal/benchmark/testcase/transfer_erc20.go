@@ -17,9 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-type waitForReceiptFunc func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
-
-type TransferEthWorker struct {
+type TransferERC20Worker struct {
 	client         *ethclient.Client
 	chainId        *big.Int
 	account        accounts.Account
@@ -28,7 +26,7 @@ type TransferEthWorker struct {
 	waitForReceipt waitForReceiptFunc
 }
 
-func (w *TransferEthWorker) eip1559TransferETH(ctx context.Context, receiverAddr common.Address, value *big.Int) (*types.Transaction, error) {
+func (w *TransferERC20Worker) eip1559TransferERC20(ctx context.Context, receiverAddr common.Address, value *big.Int) (*types.Transaction, error) {
 	tx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   w.chainId,
 		Nonce:     w.pendingNonce,
@@ -50,32 +48,8 @@ func (w *TransferEthWorker) eip1559TransferETH(ctx context.Context, receiverAddr
 	return signedTx, err
 }
 
-func (w *TransferEthWorker) transferETH(ctx context.Context, receiverAddr common.Address, value *big.Int) (*types.Transaction, error) {
-	gasPrice, err := w.client.SuggestGasPrice(ctx)
-	if err != nil {
-		return nil, err
-	}
-	tx := types.NewTx(&types.LegacyTx{
-		Nonce:    w.pendingNonce,
-		To:       &receiverAddr,
-		Value:    value,
-		Gas:      21000,
-		GasPrice: gasPrice,
-	})
-	w.pendingNonce += 1
-	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(w.chainId), w.privateKey)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := w.client.SendTransaction(ctx, signedTx); err != nil {
-		return nil, err
-	}
-	return signedTx, err
-}
-
-func (w *TransferEthWorker) DoWork(ctx context.Context, workIdx int) error {
-	tx, err := w.transferETH(context.Background(), w.account.Address, big.NewInt(0))
+func (w *TransferERC20Worker) DoWork(ctx context.Context, workIdx int) error {
+	tx, err := w.eip1559TransferERC20(context.Background(), w.account.Address, big.NewInt(0))
 	if err != nil {
 		return err
 	}
@@ -91,7 +65,7 @@ func (w *TransferEthWorker) DoWork(ctx context.Context, workIdx int) error {
 	return nil
 }
 
-type TransferEth struct {
+type TransferERC20 struct {
 	SeedPhrase     string
 	WaitForReceipt bool
 	monitor        *benchmark.TxnsMonitor
@@ -99,11 +73,11 @@ type TransferEth struct {
 	chainId        *big.Int
 }
 
-func (t *TransferEth) Name() string {
+func (t *TransferERC20) Name() string {
 	return reflect.TypeOf(*t).Name()
 }
 
-func (t *TransferEth) Prepair(opts benchmark.Options) {
+func (t *TransferERC20) Prepair(opts benchmark.Options) {
 	log.Println("Prepairing testcase ", t.Name())
 	rpcClient, err := rpc.Dial(opts.RpcUrl)
 	if err != nil {
@@ -139,7 +113,7 @@ func (t *TransferEth) Prepair(opts benchmark.Options) {
 	}
 }
 
-func (t *TransferEth) CreateWorker(rpcClient *rpc.Client, workerIdx int) benchmark.BenchmarkWorker {
+func (t *TransferERC20) CreateWorker(rpcClient *rpc.Client, workerIdx int) benchmark.BenchmarkWorker {
 	worker := &TransferEthWorker{
 		client:       ethclient.NewClient(rpcClient),
 		chainId:      t.chainId,
@@ -153,5 +127,5 @@ func (t *TransferEth) CreateWorker(rpcClient *rpc.Client, workerIdx int) benchma
 	return worker
 }
 
-func (t *TransferEth) OnFinish(result *benchmark.BenchmarkResult) {
+func (t *TransferERC20) OnFinish(result *benchmark.BenchmarkResult) {
 }
