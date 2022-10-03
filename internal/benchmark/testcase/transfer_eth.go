@@ -104,7 +104,7 @@ func (t *TransferEth) Name() string {
 }
 
 func (t *TransferEth) Prepair(opts benchmark.Options) {
-	log.Println("Prepairing testcase ", t.Name())
+	log.Println("Prepairing testcase", t.Name())
 	rpcClient, err := rpc.Dial(opts.RpcUrl)
 	if err != nil {
 		log.Fatal(err)

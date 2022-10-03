@@ -2,7 +2,6 @@ package testcase
 
 import (
 	"context"
-	"fmt"
 	"geth-benchmark/internal/benchmark"
 	"geth-benchmark/internal/benchmark/erc20"
 	"log"
@@ -40,8 +39,8 @@ func (t *QueryERC20Balance) Name() string {
 }
 
 func (t *QueryERC20Balance) Prepair(opts benchmark.Options) {
-	log.Println("Prepairing testcase ", t.Name())
-	fmt.Printf("Generating %d accounts\n", opts.NumWorkers)
+	log.Println("Prepairing testcase", t.Name())
+	log.Printf("Generating %d accounts\n", opts.NumWorkers)
 	wallet, err := NewTestWallet(t.SeedPhrase, opts.NumWorkers)
 	if err != nil {
 		log.Fatal("Failed to generate test accounts", err)
@@ -49,7 +48,7 @@ func (t *QueryERC20Balance) Prepair(opts benchmark.Options) {
 	t.wallet = wallet
 
 	if t.Erc20Addr == nilAddress {
-		fmt.Println("Deploying ERC20.", opts.RpcUrl)
+		log.Println("Deploying ERC20.", opts.RpcUrl)
 		rpcClient, err := rpc.Dial(opts.RpcUrl)
 		if err != nil {
 			log.Fatal(err)
@@ -60,7 +59,7 @@ func (t *QueryERC20Balance) Prepair(opts benchmark.Options) {
 			log.Fatal("Failed to deploy ERC20 token", err)
 		}
 		t.Erc20Addr = erc20Addr
-		fmt.Println("ERC20Token deployed at", t.Erc20Addr)
+		log.Println("ERC20Token deployed at", t.Erc20Addr)
 	}
 }
 
