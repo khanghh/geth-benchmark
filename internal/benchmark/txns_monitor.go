@@ -2,7 +2,7 @@ package benchmark
 
 import (
 	"context"
-	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -52,10 +52,10 @@ func (m *TxnsMonitor) mainLoop(headCh chan *types.Header) {
 		txnCount := len(m.txnSubs)
 		txnsConfirmed, err := m.checkForTxnReceipts()
 		if err != nil {
-			fmt.Println("Could not fetch tx receipts", err)
+			log.Println("Could not fetch tx receipts", err)
 			return
 		}
-		fmt.Printf("=====> New head %d: %d/%d txns confirmed. take %v\n", head.Number, txnsConfirmed, txnCount, time.Since(startTime))
+		log.Printf("=====> New head %d: %d/%d txns confirmed. take %v\n", head.Number, txnsConfirmed, txnCount, time.Since(startTime))
 	}
 }
 
@@ -68,7 +68,7 @@ func (m *TxnsMonitor) start() error {
 	}
 	go func() {
 		err := <-subs.Err()
-		fmt.Println("TxnsMonitor exited.", err)
+		log.Println("TxnsMonitor exited.", err)
 		close(headCh)
 	}()
 	go m.mainLoop(headCh)

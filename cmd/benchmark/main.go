@@ -12,8 +12,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/jedib0t/go-pretty/table"
 
-	"gopkg.in/urfave/cli.v1"
+	"github.com/urfave/cli/v2"
 )
 
 const (
@@ -41,6 +42,11 @@ func init() {
 		execRateFlag,
 		erc20AddrFlag,
 		txReceiptFlag,
+		influxDBFlag,
+		influxDBUrlFlag,
+		influxDBTokenFlag,
+		influxDBBucketFlag,
+		influxDBOrgFlag,
 	}
 	app.Action = run
 }
@@ -59,16 +65,57 @@ func mustLoadSeedPhrase(seedPhraseFile string) string {
 	return seedPhrase
 }
 
-func run(ctx *cli.Context) {
-	testcaseNum := ctx.GlobalUint(testcaseFlag.Name)
-	rpcUrl := ctx.GlobalString(rpcUrlFlag.Name)
-	numClients := ctx.GlobalUint(connectionsFlags.Name)
-	seedPhrase := mustLoadSeedPhrase(ctx.GlobalString(seedPhraseFlag.Name))
-	numWorkers := ctx.GlobalUint(workersFlag.Name)
-	durationStr := ctx.GlobalString(durationFlag.Name)
-	execRate := ctx.GlobalUint(execRateFlag.Name)
-	waitForReceipt := ctx.GlobalBool(txReceiptFlag.Name)
-	erc20Addr := common.HexToAddress(ctx.GlobalString(erc20AddrFlag.Name))
+func initInfluxDBReporter(ctx *cli.Context) *benchmark.InfluxDBReporter {
+	influxDBUrl := ctx.String(influxDBUrlFlag.Name)
+	influxDBToken := ctx.String(influxDBTokenFlag.Name)
+	influxDBOrg := ctx.String(influxDBOrgFlag.Name)
+	influxDBBucket := ctx.String(influxDBBucketFlag.Name)
+	return benchmark.NewInfluxDBReporter(influxDBUrl, influxDBToken, influxDBOrg, influxDBBucket, map[string]string{})
+}
+
+func printBenchmarkResult(ret *benchmark.BenchmarkResult) {
+	tw := table.NewWriter()
+	tw.SetOutputMirror(os.Stdout)
+	tw.AppendHeader(table.Row{
+		"TestCase",
+		"Total",
+		"Succeeded",
+		"Failed",
+		"MinLatency",
+		"MaxLatency",
+		"AvgLatency",
+		"SubmitPerSec",
+		"ExecPerSec",
+		"TimeTaken",
+	})
+	tw.AppendRows([]table.Row{
+		{
+			ret.Testcase,
+			ret.Total,
+			ret.Succeeded,
+			ret.Failed,
+			ret.MinLatency,
+			ret.MaxLatency,
+			ret.AvgLatency,
+			fmt.Sprintf("%.2f", ret.SubmitPerSec),
+			fmt.Sprintf("%.2f", ret.ExecPerSec),
+			ret.TimeTaken,
+		},
+	})
+	tw.Render()
+}
+
+func run(ctx *cli.Context) error {
+	testcaseNum := ctx.Uint(testcaseFlag.Name)
+	rpcUrl := ctx.String(rpcUrlFlag.Name)
+	numClients := ctx.Uint(connectionsFlags.Name)
+	seedPhrase := mustLoadSeedPhrase(ctx.String(seedPhraseFlag.Name))
+	numWorkers := ctx.Uint(workersFlag.Name)
+	durationStr := ctx.String(durationFlag.Name)
+	execRate := ctx.Uint(execRateFlag.Name)
+	influxDBEnabled := ctx.Bool(influxDBBucketFlag.Name)
+	waitForReceipt := ctx.Bool(txReceiptFlag.Name)
+	erc20Addr := common.HexToAddress(ctx.String(erc20AddrFlag.Name))
 
 	duration, err := time.ParseDuration(durationStr)
 	if err != nil {
@@ -83,6 +130,10 @@ func run(ctx *cli.Context) {
 		Duration:    duration,
 		Timeout:     1 * time.Minute,
 	})
+
+	if influxDBEnabled {
+		engine.SetReporter(initInfluxDBReporter(ctx))
+	}
 
 	var testToRun benchmark.BenchmarkTest
 	if testcaseNum == 1 {
@@ -100,8 +151,9 @@ func run(ctx *cli.Context) {
 	}
 
 	fmt.Println("Starting benchmark test.")
-	engine.SetBenchmarkTest(testToRun)
-	engine.Run(context.Background())
+	result := engine.Run(context.Background(), testToRun)
+	printBenchmarkResult(result)
+	return nil
 }
 
 func main() {
