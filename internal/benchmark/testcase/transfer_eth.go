@@ -130,7 +130,7 @@ func (t *TransferEth) Prepair(opts benchmark.Options) {
 	}
 	if t.WaitForReceipt {
 		log.Println("Staring transactions monitor.")
-		t.monitor, err = benchmark.NewTxnsMonitor(rpcClient)
+		t.monitor, err = benchmark.NewTxnsMonitor(opts.RpcUrl, 4)
 		if err != nil {
 			log.Fatal(err)
 		}

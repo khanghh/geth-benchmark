@@ -13,6 +13,19 @@ var (
 	rpcDialRetryDelay = 1 * time.Second
 )
 
+func CreateRpcClients(rpcUrl string, numClient int) ([]*rpc.Client, error) {
+	clients := make([]*rpc.Client, numClient)
+	for idx := 0; idx < numClient; idx++ {
+		log.Println("Dialing RPC node", rpcUrl)
+		client, err := rpc.Dial(rpcUrl)
+		if err != nil {
+			return nil, nil
+		}
+		clients[idx] = client
+	}
+	return clients, nil
+}
+
 func DialRpc(rawUrl string) (*rpc.Client, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), rpcDialTimeout)
 	defer cancel()

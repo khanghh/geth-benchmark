@@ -52,7 +52,9 @@ func (c *resultCollector) onWorkStart(workIdx int) {
 func (c *resultCollector) onWorkFinish(work *workResult) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	c.reporter.collectResult(work)
+	if c.reporter != nil {
+		c.reporter.collectResult(work)
+	}
 	c.totalExecTime += work.Elapsed
 	result := c.result
 	if work.Error != nil {

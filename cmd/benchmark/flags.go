@@ -49,7 +49,7 @@ var (
 		Name:  "influxdb",
 		Usage: "Enable influxdb",
 	}
-	influxDBUrlFlag = &cli.BoolFlag{
+	influxDBUrlFlag = &cli.StringFlag{
 		Name:    "influxdb.url",
 		Usage:   "InfluxDB url",
 		EnvVars: []string{"INFLUXDB_URL"},
@@ -59,14 +59,14 @@ var (
 		Usage:   "InfluxDB token",
 		EnvVars: []string{"INFLUXDB_TOKEN"},
 	}
-	influxDBBucketFlag = &cli.StringFlag{
-		Name:    "influxdb.bucket",
-		Usage:   "InfluxDB bucket",
-		EnvVars: []string{"INFLUXDB_BUCKET"},
-	}
 	influxDBOrgFlag = &cli.StringFlag{
 		Name:    "influxdb.org",
 		Usage:   "InfluxDB organization",
 		EnvVars: []string{"INFLUXDB_ORG"},
+	}
+	influxDBBucketFlag = &cli.StringFlag{
+		Name:    "influxdb.bucket",
+		Usage:   "InfluxDB bucket",
+		EnvVars: []string{"INFLUXDB_BUCKET"},
 	}
 )

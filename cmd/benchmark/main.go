@@ -113,7 +113,7 @@ func run(ctx *cli.Context) error {
 	numWorkers := ctx.Uint(workersFlag.Name)
 	durationStr := ctx.String(durationFlag.Name)
 	execRate := ctx.Uint(execRateFlag.Name)
-	influxDBEnabled := ctx.Bool(influxDBBucketFlag.Name)
+	influxDBEnabled := ctx.Bool(influxDBFlag.Name)
 	waitForReceipt := ctx.Bool(txReceiptFlag.Name)
 	erc20Addr := common.HexToAddress(ctx.String(erc20AddrFlag.Name))
 

@@ -19,7 +19,10 @@ type InfluxDBReporter struct {
 }
 
 func (r *InfluxDBReporter) collectResult(work *workResult) {
-	bucketId := uint64(work.Elapsed % 100 * time.Millisecond)
+	bucketId := uint64(work.Elapsed / time.Millisecond / 100)
+	if _, ok := r.workBuckets[bucketId]; !ok {
+		r.workBuckets[bucketId] = 0
+	}
 	r.workBuckets[bucketId] += 1
 }
 
@@ -29,7 +32,7 @@ func (r *InfluxDBReporter) publishMetrics(ctx context.Context, result *Benchmark
 	measurementName := "work/duration/histogram"
 	for bucketId, count := range r.workBuckets {
 		fields := map[string]interface{}{
-			fmt.Sprintf("%dms", bucketId*100): count,
+			fmt.Sprintf("%d", bucketId*100): count,
 		}
 		pts = append(pts, influxdb2.NewPoint(measurementName, r.Tags, fields, now))
 	}
@@ -46,8 +49,9 @@ func NewInfluxDBReporter(serverURL, authToken, org, bucket string, tags map[stri
 	client := influxdb2.NewClient(serverURL, authToken)
 	writeAPI := client.WriteAPIBlocking(org, bucket)
 	return &InfluxDBReporter{
-		client:   client,
-		writeAPI: writeAPI,
-		Tags:     tags,
+		client:      client,
+		workBuckets: map[uint64]uint64{},
+		writeAPI:    writeAPI,
+		Tags:        tags,
 	}
 }

@@ -2,6 +2,7 @@ package benchmark
 
 import (
 	"context"
+	"geth-benchmark/internal/core"
 	"log"
 	"time"
 
@@ -97,9 +98,11 @@ func (e *BenchmarkEngine) SetReporter(reporter *InfluxDBReporter) {
 
 func (e *BenchmarkEngine) Run(ctx context.Context, testToRun BenchmarkTest) *BenchmarkResult {
 	log.Println("Preparing connections.")
-	if err := e.prepairClients(); err != nil {
+	clients, err := core.CreateRpcClients(e.RpcUrl, e.NumClients)
+	if err != nil {
 		log.Fatal(err)
 	}
+	e.clients = clients
 
 	log.Println("Preparing testcase.")
 	e.testToRun = testToRun

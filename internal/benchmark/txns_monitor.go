@@ -2,28 +2,29 @@ package benchmark
 
 import (
 	"context"
+	"geth-benchmark/internal/core"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+	"golang.org/x/exp/maps"
 )
 
 type TxnsMonitor struct {
-	client  *rpc.Client
+	clients []*rpc.Client
 	txnSubs map[common.Hash]chan *types.Receipt
 	mtx     sync.Mutex
 }
 
-func (m *TxnsMonitor) checkForTxnReceipts() (int, error) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	txnsConfirmed := 0
+func (m *TxnsMonitor) fetchTxReceipts(wg sync.WaitGroup, txHashes []common.Hash, retCh chan<- *types.Receipt) {
+	defer wg.Done()
 	batchReq := []rpc.BatchElem{}
-	for txHash := range m.txnSubs {
+	for txHash := range txHashes {
 		batchElem := rpc.BatchElem{
 			Method: "eth_getTransactionReceipt",
 			Args:   []interface{}{txHash},
@@ -31,18 +32,57 @@ func (m *TxnsMonitor) checkForTxnReceipts() (int, error) {
 		}
 		batchReq = append(batchReq, batchElem)
 	}
-	if err := m.client.BatchCall(batchReq); err != nil {
-		return 0, err
-	}
 	for _, elem := range batchReq {
-		receipt := elem.Result.(*types.Receipt)
-		if sub, ok := m.txnSubs[receipt.TxHash]; ok {
-			sub <- receipt
-			close(sub)
-			delete(m.txnSubs, receipt.TxHash)
-			txnsConfirmed += 1
-		}
+		retCh <- elem.Result.(*types.Receipt)
 	}
+}
+
+func splitTxHashes(txHashes []common.Hash, numPart int) [][]common.Hash {
+	totalTxHashes := len(txHashes)
+	partAmount := totalTxHashes / numPart
+	ret := make([][]common.Hash, numPart)
+	for idx := 0; idx < numPart; idx++ {
+		part := append([]common.Hash{}, txHashes[idx*partAmount:idx*partAmount+partAmount]...)
+		ret[idx] = part
+	}
+	txIdx := numPart * partAmount
+	for idx := 0; idx < numPart; idx++ {
+		if txIdx < totalTxHashes {
+			ret[idx] = append(ret[idx], txHashes[txIdx])
+		}
+		txIdx++
+	}
+	return ret
+}
+
+func (m *TxnsMonitor) dispatchTxReceipt(receipt *types.Receipt) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	if sub, ok := m.txnSubs[receipt.TxHash]; ok {
+		sub <- receipt
+		close(sub)
+		delete(m.txnSubs, receipt.TxHash)
+	}
+}
+
+func (m *TxnsMonitor) checkForTxnReceipts() (uint64, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	var txnsConfirmed uint64 = 0
+	txHashesArr := splitTxHashes(maps.Keys(m.txnSubs), len(m.clients))
+	receiptCh := make(chan *types.Receipt)
+	wg := sync.WaitGroup{}
+	for idx := 0; idx < len(m.clients); idx++ {
+		wg.Add(1)
+		go m.fetchTxReceipts(wg, txHashesArr[idx], receiptCh)
+	}
+	go func() {
+		for receipt := range receiptCh {
+			m.dispatchTxReceipt(receipt)
+			atomic.AddUint64(&txnsConfirmed, 1)
+		}
+	}()
+	wg.Wait()
 	return txnsConfirmed, nil
 }
 
@@ -60,7 +100,7 @@ func (m *TxnsMonitor) mainLoop(headCh chan *types.Header) {
 }
 
 func (m *TxnsMonitor) start() error {
-	client := ethclient.NewClient(m.client)
+	client := ethclient.NewClient(m.clients[0])
 	headCh := make(chan *types.Header)
 	subs, err := client.SubscribeNewHead(context.Background(), headCh)
 	if err != nil {
@@ -89,9 +129,13 @@ func (m *TxnsMonitor) WaitForTxnReceipt(ctx context.Context, txHash common.Hash)
 	}
 }
 
-func NewTxnsMonitor(client *rpc.Client) (*TxnsMonitor, error) {
+func NewTxnsMonitor(rpcUrl string, numClient int) (*TxnsMonitor, error) {
+	clients, err := core.CreateRpcClients(rpcUrl, numClient)
+	if err != nil {
+		return nil, err
+	}
 	monitor := &TxnsMonitor{
-		client:  client,
+		clients: clients,
 		txnSubs: make(map[common.Hash]chan *types.Receipt),
 	}
 	if err := monitor.start(); err != nil {
