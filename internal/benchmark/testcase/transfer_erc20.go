@@ -142,7 +142,7 @@ func (t *TransferERC20) CreateWorker(rpcClient *rpc.Client, workerIdx int) bench
 		log.Fatal(err)
 	}
 	worker := &TransferERC20Worker{
-		client:       ethclient.NewClient(rpcClient),
+		client:       client,
 		chainId:      t.chainId,
 		account:      t.wallet.Accounts[workerIdx],
 		privateKey:   t.wallet.PrivateKeys[workerIdx],

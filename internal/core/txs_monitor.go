@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"sync"
@@ -60,6 +61,7 @@ func (p *TxsMonitor) handleNewHead(head *types.Header) {
 	for _, txHash := range txHashes {
 		p.dispatchTxConfirmed(txHash)
 	}
+	fmt.Printf("=> New head #%d: %d/%d transactions confrimed\n", head.Number, len(txHashes), len(p.txSubs))
 }
 
 func (p *TxsMonitor) eventLoop() {

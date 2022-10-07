@@ -20,7 +20,7 @@ type InfluxDBReporter struct {
 	mtx         sync.Mutex
 }
 
-func (r *InfluxDBReporter) collectResult(work *workResult) {
+func (r *InfluxDBReporter) CollectWorkResult(work *WorkResult) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	bucketId := uint64(work.Elapsed / time.Millisecond / 100)
@@ -30,7 +30,7 @@ func (r *InfluxDBReporter) collectResult(work *workResult) {
 	r.workBuckets[bucketId] += 1
 }
 
-func (r *InfluxDBReporter) publishMetrics(ctx context.Context, result *BenchmarkResult) {
+func (r *InfluxDBReporter) PublishReport(ctx context.Context) {
 	now := time.Now()
 	pts := []*write.Point{}
 	measurementName := "work/duration/histogram"

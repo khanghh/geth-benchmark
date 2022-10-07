@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-type workResult struct {
+type WorkResult struct {
 	WorkIndex int
 	Elapsed   time.Duration
 	Error     error
@@ -33,7 +33,7 @@ type resultCollector struct {
 	mtx           sync.Mutex
 	totalExecTime time.Duration
 	result        *BenchmarkResult
-	reporter      *InfluxDBReporter
+	reporter      BenchmarkReporter
 }
 
 func (c *resultCollector) initBenchmarkResult(testcase string) {
@@ -49,10 +49,13 @@ func (c *resultCollector) onWorkStart(workIdx int) {
 	c.result.SubmitPerSec = float64(c.result.Total*uint64(time.Second)) / float64(time.Since(c.result.StartTime))
 }
 
-func (c *resultCollector) onWorkFinish(work *workResult) {
+func (c *resultCollector) onWorkFinish(work *WorkResult) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	c.totalExecTime += work.Elapsed
+	if c.reporter != nil {
+		c.reporter.CollectWorkResult(work)
+	}
 	result := c.result
 	if work.Error != nil {
 		log.Println(work.Error)
@@ -72,7 +75,7 @@ func (c *resultCollector) onWorkFinish(work *workResult) {
 	}
 }
 
-func (e *resultCollector) SetReporter(reporter *InfluxDBReporter) {
+func (e *resultCollector) SetReporter(reporter BenchmarkReporter) {
 	e.reporter = reporter
 }
 

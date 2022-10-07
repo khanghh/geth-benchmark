@@ -38,6 +38,11 @@ type BenchmarkEngine struct {
 	clients   []*rpc.Client
 }
 
+type BenchmarkReporter interface {
+	CollectWorkResult(work *WorkResult)
+	PublishReport(ctx context.Context)
+}
+
 func (e *BenchmarkEngine) doWork(worker BenchmarkWorker, workIdx int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), e.Timeout)
 	defer cancel()
@@ -57,7 +62,7 @@ func (e *BenchmarkEngine) consumeWork(wg *LimitWaitGroup, workerIdx int, workCh 
 	for workIdx := range workCh {
 		startTime := time.Now()
 		err := e.doWork(worker, workIdx)
-		e.onWorkFinish(&workResult{
+		e.onWorkFinish(&WorkResult{
 			WorkIndex: workIdx,
 			Elapsed:   time.Since(startTime),
 			Error:     err,
