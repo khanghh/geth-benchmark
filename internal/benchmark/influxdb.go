@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -16,9 +17,12 @@ type InfluxDBReporter struct {
 	client      influxdb2.Client
 	writeAPI    api.WriteAPIBlocking
 	workBuckets map[uint64]uint64
+	mtx         sync.Mutex
 }
 
 func (r *InfluxDBReporter) collectResult(work *workResult) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 	bucketId := uint64(work.Elapsed / time.Millisecond / 100)
 	if _, ok := r.workBuckets[bucketId]; !ok {
 		r.workBuckets[bucketId] = 0
@@ -42,6 +46,10 @@ func (r *InfluxDBReporter) publishMetrics(ctx context.Context, result *Benchmark
 			log.Printf("Failed to publish metrics to influxdb, measurement: %s, error: %v", pt.Name(), err)
 			return
 		}
+	}
+	err := r.writeAPI.Flush(ctx)
+	if err != nil {
+		log.Println(err)
 	}
 }
 

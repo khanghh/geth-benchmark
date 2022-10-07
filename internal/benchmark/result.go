@@ -52,9 +52,6 @@ func (c *resultCollector) onWorkStart(workIdx int) {
 func (c *resultCollector) onWorkFinish(work *workResult) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	if c.reporter != nil {
-		c.reporter.collectResult(work)
-	}
 	c.totalExecTime += work.Elapsed
 	result := c.result
 	if work.Error != nil {
@@ -73,6 +70,10 @@ func (c *resultCollector) onWorkFinish(work *workResult) {
 	if result.MinLatency == 0 || work.Elapsed < result.MinLatency {
 		result.MinLatency = work.Elapsed
 	}
+}
+
+func (e *resultCollector) SetReporter(reporter *InfluxDBReporter) {
+	e.reporter = reporter
 }
 
 func (c *resultCollector) printStatus() {
@@ -96,9 +97,6 @@ func (c *resultCollector) monitorLoop(ctx context.Context) {
 		select {
 		case <-time.After(1 * time.Second):
 			c.printStatus()
-			if c.reporter != nil {
-				c.reporter.publishMetrics(ctx, c.result)
-			}
 		case <-ctx.Done():
 			return
 		}

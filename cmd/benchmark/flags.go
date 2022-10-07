@@ -41,10 +41,6 @@ var (
 		Name:  "erc20",
 		Usage: "ERC20 token address",
 	}
-	txReceiptFlag = &cli.BoolFlag{
-		Name:  "receipt",
-		Usage: "Wait for transaction's receipt",
-	}
 	influxDBFlag = &cli.BoolFlag{
 		Name:  "influxdb",
 		Usage: "Enable influxdb",

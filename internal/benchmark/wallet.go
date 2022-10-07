@@ -1,4 +1,4 @@
-package testcase
+package benchmark
 
 import (
 	"crypto/ecdsa"

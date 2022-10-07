@@ -57,7 +57,7 @@ func (e *BenchmarkEngine) consumeWork(wg *LimitWaitGroup, workerIdx int, workCh 
 	for workIdx := range workCh {
 		startTime := time.Now()
 		err := e.doWork(worker, workIdx)
-		go e.onWorkFinish(&workResult{
+		e.onWorkFinish(&workResult{
 			WorkIndex: workIdx,
 			Elapsed:   time.Since(startTime),
 			Error:     err,
@@ -78,39 +78,21 @@ func (e *BenchmarkEngine) produceWork(workCh chan<- int) {
 	}
 }
 
-func (e *BenchmarkEngine) prepairClients() error {
-	clients := make([]*rpc.Client, e.NumClients)
-	for idx := 0; idx < e.NumClients; idx++ {
-		log.Println("Dialing RPC node", e.RpcUrl)
-		client, err := rpc.Dial(e.RpcUrl)
-		if err != nil {
-			return err
-		}
-		clients[idx] = client
-	}
-	e.clients = clients
-	return nil
-}
-
-func (e *BenchmarkEngine) SetReporter(reporter *InfluxDBReporter) {
-	e.reporter = reporter
-}
-
 func (e *BenchmarkEngine) Run(ctx context.Context, testToRun BenchmarkTest) *BenchmarkResult {
-	log.Println("Preparing connections.")
+	log.Println("Preparing connections")
 	clients, err := core.CreateRpcClients(e.RpcUrl, e.NumClients)
 	if err != nil {
 		log.Fatal(err)
 	}
 	e.clients = clients
 
-	log.Println("Preparing testcase.")
+	log.Println("Preparing testcase", testToRun.Name())
 	e.testToRun = testToRun
 	e.testToRun.Prepair(e.Options)
 
-	log.Printf("Running testcase with %d workres.", e.NumWorkers)
+	log.Printf("Running testcase with %d workres", e.NumWorkers)
 	wg := NewLimitWaitGroup(e.NumWorkers)
-	workCh := make(chan int, 10*e.ExecuteRate)
+	workCh := make(chan int, 100*e.ExecuteRate)
 	for workerIdx := 0; workerIdx < e.NumWorkers; workerIdx++ {
 		wg.Add()
 		go e.consumeWork(wg, workerIdx, workCh)
@@ -119,7 +101,7 @@ func (e *BenchmarkEngine) Run(ctx context.Context, testToRun BenchmarkTest) *Ben
 	go e.monitorLoop(ctx)
 	e.produceWork(workCh)
 
-	log.Println("Waiting for all workers to finish.")
+	log.Println("Waiting for all workers to finish")
 	wg.Wait()
 	e.testToRun.OnFinish(e.result)
 	return e.result

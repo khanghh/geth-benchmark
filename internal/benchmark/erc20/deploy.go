@@ -50,8 +50,8 @@ func DeployBenchmarkToken(ctx context.Context, rpcClient *rpc.Client, privateKey
 		return nilAddress, nil, err
 	}
 	opts.Value = big.NewInt(0)
-	opts.GasTipCap = big.NewInt(100 * params.GWei)
-	opts.GasFeeCap = big.NewInt(101 * params.GWei)
+	opts.GasPrice = big.NewInt(10 * params.GWei)
+	opts.GasLimit = 100000
 	addr, tx, erc20Token, err := DeployERC20(opts, client, erc20TokenName, erc20TokenSymbol)
 	if err != nil {
 		return nilAddress, nil, err

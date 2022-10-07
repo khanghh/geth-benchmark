@@ -3,9 +3,9 @@ package testcase
 import (
 	"context"
 	"crypto/ecdsa"
-	"errors"
 	"geth-benchmark/internal/benchmark"
 	"geth-benchmark/internal/benchmark/erc20"
+	"geth-benchmark/internal/core"
 	"log"
 	"math/big"
 	"reflect"
@@ -20,13 +20,12 @@ import (
 )
 
 type TransferERC20Worker struct {
-	client         *ethclient.Client
-	chainId        *big.Int
-	account        accounts.Account
-	privateKey     *ecdsa.PrivateKey
-	pendingNonce   uint64
-	erc20Token     *erc20.ERC20
-	waitForReceipt waitForReceiptFunc
+	client       *ethclient.Client
+	chainId      *big.Int
+	account      accounts.Account
+	privateKey   *ecdsa.PrivateKey
+	pendingNonce uint64
+	erc20Token   *erc20.ERC20
 }
 
 func (w *TransferERC20Worker) eip1559TransferERC20(ctx context.Context, receiverAddr common.Address, amount *big.Int) (*types.Transaction, error) {
@@ -52,29 +51,41 @@ func (w *TransferERC20Worker) eip1559TransferERC20(ctx context.Context, receiver
 	return signedTx, err
 }
 
+func (w *TransferERC20Worker) transferERC20(ctx context.Context, receiverAddr common.Address, amount *big.Int) (*types.Transaction, error) {
+	opts := bind.TransactOpts{
+		From:     w.account.Address,
+		Nonce:    big.NewInt(int64(w.pendingNonce)),
+		GasPrice: big.NewInt(10 * params.GWei),
+		GasLimit: 50000,
+	}
+	w.pendingNonce += 1
+	tx, err := w.erc20Token.Transfer(&opts, receiverAddr, amount)
+	if err != nil {
+		return nil, err
+	}
+	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(w.chainId), w.privateKey)
+	if err != nil {
+		return nil, err
+	}
+	if err := w.client.SendTransaction(ctx, signedTx); err != nil {
+		return nil, err
+	}
+	return signedTx, err
+}
+
 func (w *TransferERC20Worker) DoWork(ctx context.Context, workIdx int) error {
-	tx, err := w.eip1559TransferERC20(context.Background(), w.account.Address, big.NewInt(0))
+	tx, err := w.transferERC20(context.Background(), w.account.Address, big.NewInt(0))
 	if err != nil {
 		return err
 	}
-	if w.waitForReceipt != nil {
-		receipt, err := w.waitForReceipt(ctx, tx.Hash())
-		if err != nil {
-			return err
-		}
-		if receipt.Status == 0 {
-			return errors.New("transaction reverted")
-		}
-	}
-	return nil
+	return core.WaitForTxConfirmed(ctx, tx.Hash())
 }
 
 type TransferERC20 struct {
 	SeedPhrase     string
 	Erc20Addr      common.Address
 	WaitForReceipt bool
-	monitor        *benchmark.TxnsMonitor
-	wallet         *TestWallet
+	wallet         *benchmark.TestWallet
 	chainId        *big.Int
 }
 
@@ -83,11 +94,11 @@ func (t *TransferERC20) Name() string {
 }
 
 func (t *TransferERC20) Prepair(opts benchmark.Options) {
-	log.Println("Prepairing testcase", t.Name())
 	rpcClient, err := rpc.Dial(opts.RpcUrl)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer rpcClient.Close()
 	client := ethclient.NewClient(rpcClient)
 	chainId, err := client.ChainID(context.Background())
 	if err != nil {
@@ -96,20 +107,20 @@ func (t *TransferERC20) Prepair(opts benchmark.Options) {
 	t.chainId = chainId
 
 	log.Printf("Generating %d accounts\n", opts.NumWorkers)
-	wallet, err := NewTestWallet(t.SeedPhrase, opts.NumWorkers)
+	wallet, err := benchmark.NewTestWallet(t.SeedPhrase, opts.NumWorkers)
 	if err != nil {
 		log.Fatal(err)
 	}
 	t.wallet = wallet
 
-	log.Println("Fetching accounts' nonces.")
+	log.Println("Fetching accounts' nonces")
 	_, err = t.wallet.FetchNonces(rpcClient)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if t.Erc20Addr == nilAddress {
-		log.Println("Deploying ERC20.", opts.RpcUrl)
+		log.Println("Deploying ERC20 token")
 		erc20Addr, _, err := erc20.DeployBenchmarkToken(context.Background(), rpcClient, wallet.PrivateKeys[0])
 		if err != nil {
 			log.Fatal("Failed to deploy ERC20 token", err)
@@ -117,14 +128,10 @@ func (t *TransferERC20) Prepair(opts benchmark.Options) {
 		t.Erc20Addr = erc20Addr
 		log.Println("ERC20Token deployed at", t.Erc20Addr)
 	}
-	if t.WaitForReceipt {
-		log.Println("Staring transactions monitor.")
-		t.monitor, err = benchmark.NewTxnsMonitor(opts.RpcUrl, 4)
-		if err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		rpcClient.Close()
+
+	log.Println("Starting monitor transactions")
+	if _, err := core.InitTxsMonitor(opts.RpcUrl); err != nil {
+		log.Fatal("Failed to initialize TxsMonitor", err)
 	}
 }
 
@@ -132,7 +139,7 @@ func (t *TransferERC20) CreateWorker(rpcClient *rpc.Client, workerIdx int) bench
 	client := ethclient.NewClient(rpcClient)
 	erc20Token, err := erc20.NewERC20(t.Erc20Addr, client)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	worker := &TransferERC20Worker{
 		client:       ethclient.NewClient(rpcClient),
@@ -141,9 +148,6 @@ func (t *TransferERC20) CreateWorker(rpcClient *rpc.Client, workerIdx int) bench
 		privateKey:   t.wallet.PrivateKeys[workerIdx],
 		pendingNonce: t.wallet.PendingNonces[workerIdx],
 		erc20Token:   erc20Token,
-	}
-	if t.WaitForReceipt {
-		worker.waitForReceipt = t.monitor.WaitForTxnReceipt
 	}
 	return worker
 }

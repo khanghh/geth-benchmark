@@ -67,7 +67,7 @@ func onNewPendingTx(txHash common.Hash) {
 
 func run(ctx *cli.Context) {
 	ipcPath := ctx.GlobalString("ipc")
-	listener := core.NewNodeListener(ipcPath)
+	listener := core.NewEthListener(ipcPath)
 	listener.OnNewHead = onNewHeads
 	listener.OnNewPendingTx = onNewPendingTx
 	os.RemoveAll(blocksFileName)

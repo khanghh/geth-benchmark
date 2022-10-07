@@ -41,7 +41,6 @@ func init() {
 		durationFlag,
 		execRateFlag,
 		erc20AddrFlag,
-		txReceiptFlag,
 		influxDBFlag,
 		influxDBUrlFlag,
 		influxDBTokenFlag,
@@ -114,7 +113,6 @@ func run(ctx *cli.Context) error {
 	durationStr := ctx.String(durationFlag.Name)
 	execRate := ctx.Uint(execRateFlag.Name)
 	influxDBEnabled := ctx.Bool(influxDBFlag.Name)
-	waitForReceipt := ctx.Bool(txReceiptFlag.Name)
 	erc20Addr := common.HexToAddress(ctx.String(erc20AddrFlag.Name))
 
 	duration, err := time.ParseDuration(durationStr)
@@ -138,11 +136,15 @@ func run(ctx *cli.Context) error {
 	var testToRun benchmark.BenchmarkTest
 	if testcaseNum == 1 {
 		testToRun = &testcase.TransferEth{
-			SeedPhrase:     seedPhrase,
-			WaitForReceipt: waitForReceipt,
+			SeedPhrase: seedPhrase,
 		}
 	} else if testcaseNum == 2 {
 		testToRun = &testcase.QueryERC20Balance{
+			SeedPhrase: seedPhrase,
+			Erc20Addr:  erc20Addr,
+		}
+	} else if testcaseNum == 3 {
+		testToRun = &testcase.TransferERC20{
 			SeedPhrase: seedPhrase,
 			Erc20Addr:  erc20Addr,
 		}

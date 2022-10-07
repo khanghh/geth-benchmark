@@ -22,14 +22,14 @@ var (
 type NewHeadeHandleFunc func(*types.Header)
 type NewPendingTxHandleFunc func(common.Hash)
 
-type NodeMonitor struct {
+type EthListener struct {
 	rpcUrl         string
 	client         *rpc.Client
 	OnNewHead      NewHeadeHandleFunc
 	OnNewPendingTx NewPendingTxHandleFunc
 }
 
-func (l *NodeMonitor) listenEventsWorkerImpl(ctx context.Context) error {
+func (l *EthListener) listenEventsWorkerImpl(ctx context.Context) error {
 	headCh := make(chan *types.Header)
 	newHeadSub, err := l.client.EthSubscribe(ctx, headCh, EventNewHeads)
 	if err != nil {
@@ -37,7 +37,7 @@ func (l *NodeMonitor) listenEventsWorkerImpl(ctx context.Context) error {
 	}
 
 	txHashCh := make(chan common.Hash)
-	newTxnSub, err := l.client.EthSubscribe(ctx, txHashCh, EventNewPendingTx)
+	newTxSub, err := l.client.EthSubscribe(ctx, txHashCh, EventNewPendingTx)
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (l *NodeMonitor) listenEventsWorkerImpl(ctx context.Context) error {
 			l.OnNewPendingTx(txHash)
 		case err := <-newHeadSub.Err():
 			return err
-		case err := <-newTxnSub.Err():
+		case err := <-newTxSub.Err():
 			return err
 		case <-ctx.Done():
 			return nil
@@ -58,7 +58,7 @@ func (l *NodeMonitor) listenEventsWorkerImpl(ctx context.Context) error {
 	}
 }
 
-func (l *NodeMonitor) listenEventsWorker(ctx context.Context) {
+func (l *EthListener) listenEventsWorker(ctx context.Context) {
 	for {
 		l.client, _ = TryConnect(ctx, l.rpcUrl)
 		errCh := make(chan error, 1)
@@ -74,12 +74,12 @@ func (l *NodeMonitor) listenEventsWorker(ctx context.Context) {
 	}
 }
 
-func (l *NodeMonitor) Start() {
+func (l *EthListener) Start() {
 	l.listenEventsWorker(context.Background())
 }
 
-func NewNodeListener(rpcUrl string) *NodeMonitor {
-	return &NodeMonitor{
+func NewNodeListener(rpcUrl string) *EthListener {
+	return &EthListener{
 		rpcUrl: rpcUrl,
 	}
 }

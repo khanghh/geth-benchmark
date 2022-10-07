@@ -31,7 +31,7 @@ func (w *QueryERC20BalanceWorker) DoWork(ctx context.Context, workIdx int) error
 type QueryERC20Balance struct {
 	SeedPhrase string
 	Erc20Addr  common.Address
-	wallet     *TestWallet
+	wallet     *benchmark.TestWallet
 }
 
 func (t *QueryERC20Balance) Name() string {
@@ -41,7 +41,7 @@ func (t *QueryERC20Balance) Name() string {
 func (t *QueryERC20Balance) Prepair(opts benchmark.Options) {
 	log.Println("Prepairing testcase", t.Name())
 	log.Printf("Generating %d accounts\n", opts.NumWorkers)
-	wallet, err := NewTestWallet(t.SeedPhrase, opts.NumWorkers)
+	wallet, err := benchmark.NewTestWallet(t.SeedPhrase, opts.NumWorkers)
 	if err != nil {
 		log.Fatal("Failed to generate test accounts", err)
 	}
