@@ -102,6 +102,7 @@ func (e *BenchmarkEngine) Run(ctx context.Context, testToRun BenchmarkTest) *Ben
 		wg.Add()
 		go e.consumeWork(wg, workerIdx, workCh)
 	}
+	time.Sleep(5 * time.Second)
 	e.initBenchmarkResult(testToRun.Name())
 	go e.monitorLoop(ctx)
 	e.produceWork(workCh)

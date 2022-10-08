@@ -32,8 +32,8 @@ func (w *TransferERC20Worker) eip1559TransferERC20(ctx context.Context, receiver
 	opts := bind.TransactOpts{
 		From:      w.account.Address,
 		Nonce:     big.NewInt(int64(w.pendingNonce)),
-		GasFeeCap: big.NewInt(10 * params.GWei),
-		GasTipCap: big.NewInt(10 * params.GWei),
+		GasFeeCap: big.NewInt(101 * params.GWei),
+		GasTipCap: big.NewInt(101 * params.GWei),
 	}
 	tx, err := w.erc20Token.Transfer(&opts, receiverAddr, amount)
 	if err != nil {
@@ -123,7 +123,7 @@ func (t *TransferERC20) Prepair(opts benchmark.Options) {
 		log.Println("Deploying ERC20 token")
 		erc20Addr, _, err := erc20.DeployBenchmarkToken(context.Background(), rpcClient, wallet.PrivateKeys[0])
 		if err != nil {
-			log.Fatal("Failed to deploy ERC20 token", err)
+			log.Fatal("Failed to deploy ERC20 token: ", err)
 		}
 		t.Erc20Addr = erc20Addr
 		log.Println("ERC20Token deployed at", t.Erc20Addr)

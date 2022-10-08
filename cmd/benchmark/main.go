@@ -53,7 +53,7 @@ func init() {
 func mustLoadSeedPhrase(seedPhraseFile string) string {
 	seedPhrase := defaultSeedPhrase
 	if seedPhraseFile == "" {
-		fmt.Println("No seed phrase file provided. Fall back to default seed phrase.")
+		fmt.Println("No seed phrase file provided. Fallback to default seed phrase.")
 	} else {
 		buf, err := os.ReadFile(seedPhrase)
 		if err != nil {

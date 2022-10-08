@@ -3,6 +3,7 @@ package erc20
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"math/big"
 	"time"
 
@@ -50,14 +51,20 @@ func DeployBenchmarkToken(ctx context.Context, rpcClient *rpc.Client, privateKey
 		return nilAddress, nil, err
 	}
 	opts.Value = big.NewInt(0)
-	opts.GasPrice = big.NewInt(10 * params.GWei)
-	opts.GasLimit = 100000
+	// opts.GasPrice = big.NewInt(10 * params.GWei)
+	opts.GasFeeCap = big.NewInt(101 * params.GWei)
+	opts.GasTipCap = big.NewInt(101 * params.GWei)
+	opts.GasLimit = 600000
 	addr, tx, erc20Token, err := DeployERC20(opts, client, erc20TokenName, erc20TokenSymbol)
 	if err != nil {
 		return nilAddress, nil, err
 	}
-	if _, err = waitForTxConfirmed(ctx, rpcClient, tx.Hash()); err != nil {
+	receipt, err := waitForTxConfirmed(ctx, rpcClient, tx.Hash())
+	if err != nil {
 		return nilAddress, nil, err
+	}
+	if receipt.Status == 0 {
+		return nilAddress, nil, errors.New("transaction failed")
 	}
 	return addr, erc20Token, nil
 }

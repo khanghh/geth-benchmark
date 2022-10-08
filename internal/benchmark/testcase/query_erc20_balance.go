@@ -39,7 +39,6 @@ func (t *QueryERC20Balance) Name() string {
 }
 
 func (t *QueryERC20Balance) Prepair(opts benchmark.Options) {
-	log.Println("Prepairing testcase", t.Name())
 	log.Printf("Generating %d accounts\n", opts.NumWorkers)
 	wallet, err := benchmark.NewTestWallet(t.SeedPhrase, opts.NumWorkers)
 	if err != nil {
@@ -48,7 +47,7 @@ func (t *QueryERC20Balance) Prepair(opts benchmark.Options) {
 	t.wallet = wallet
 
 	if t.Erc20Addr == nilAddress {
-		log.Println("Deploying ERC20.", opts.RpcUrl)
+		log.Println("Deploying ERC20 token")
 		rpcClient, err := rpc.Dial(opts.RpcUrl)
 		if err != nil {
 			log.Fatal(err)
@@ -56,7 +55,7 @@ func (t *QueryERC20Balance) Prepair(opts benchmark.Options) {
 		defer rpcClient.Close()
 		erc20Addr, _, err := erc20.DeployBenchmarkToken(context.Background(), rpcClient, wallet.PrivateKeys[0])
 		if err != nil {
-			log.Fatal("Failed to deploy ERC20 token", err)
+			log.Fatal("Failed to deploy ERC20 token: ", err)
 		}
 		t.Erc20Addr = erc20Addr
 		log.Println("ERC20Token deployed at", t.Erc20Addr)
@@ -67,7 +66,7 @@ func (t *QueryERC20Balance) CreateWorker(rpcClient *rpc.Client, workerIdx int) b
 	client := ethclient.NewClient(rpcClient)
 	erc20Token, err := erc20.NewERC20(t.Erc20Addr, client)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	acc := t.wallet.Accounts[workerIdx]
 	return &QueryERC20BalanceWorker{
