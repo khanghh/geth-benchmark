@@ -100,6 +100,9 @@ func (c *resultCollector) monitorLoop(ctx context.Context) {
 		select {
 		case <-time.After(1 * time.Second):
 			c.printStatus()
+			if c.reporter != nil {
+				c.reporter.PublishReport(ctx)
+			}
 		case <-ctx.Done():
 			return
 		}

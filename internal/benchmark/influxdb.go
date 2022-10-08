@@ -31,6 +31,8 @@ func (r *InfluxDBReporter) CollectWorkResult(work *WorkResult) {
 }
 
 func (r *InfluxDBReporter) PublishReport(ctx context.Context) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 	now := time.Now()
 	pts := []*write.Point{}
 	measurementName := "work/duration/histogram"
