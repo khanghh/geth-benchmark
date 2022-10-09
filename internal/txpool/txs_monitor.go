@@ -1,9 +1,9 @@
-package core
+package txpool
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"geth-benchmark/internal/core"
 	"log"
 	"math/big"
 	"sync"
@@ -17,15 +17,35 @@ import (
 )
 
 var (
-	txsMonitor *TxsMonitor
+	pool *TxPool
 )
 
-type BlockTransactions struct {
-	Number       *big.Int
-	Transactions []common.Hash
+type TxSender interface {
+	SendTransaction(ctx context.Context, signedTx *types.Transaction) error
 }
 
-type TxsMonitor struct {
+type txSenderImpl struct {
+	rpcClient *rpc.Client
+}
+
+// SendTransaction send and wait until transaction minted
+func (sender *txSenderImpl) SendTransaction(ctx context.Context, signedTx *types.Transaction) error {
+	subCh := pool.add(signedTx.Hash())
+	defer pool.remove(signedTx.Hash())
+	client := ethclient.NewClient(sender.rpcClient)
+	err := client.SendTransaction(ctx, signedTx)
+	if err != nil {
+		return err
+	}
+	select {
+	case <-subCh:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+type TxPool struct {
 	rpcClient  *rpc.Client
 	newHeadCh  chan *types.Header
 	newHeadSub ethereum.Subscription
@@ -33,7 +53,7 @@ type TxsMonitor struct {
 	mtx        sync.Mutex
 }
 
-func (p *TxsMonitor) fetchBlockTxs(blockNum *big.Int) ([]common.Hash, error) {
+func (p *TxPool) fetchBlockTxs(blockNum *big.Int) ([]common.Hash, error) {
 	var resp struct {
 		Transactions []common.Hash `json:"transactions"`
 	}
@@ -44,7 +64,7 @@ func (p *TxsMonitor) fetchBlockTxs(blockNum *big.Int) ([]common.Hash, error) {
 	return resp.Transactions, nil
 }
 
-func (m *TxsMonitor) dispatchTxConfirmed(txHash common.Hash) {
+func (m *TxPool) dispatchTxConfirmed(txHash common.Hash) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	if sub, ok := m.txSubs[txHash]; ok {
@@ -53,7 +73,7 @@ func (m *TxsMonitor) dispatchTxConfirmed(txHash common.Hash) {
 	}
 }
 
-func (p *TxsMonitor) handleNewHead(head *types.Header) {
+func (p *TxPool) handleNewHead(head *types.Header) {
 	txHashes, err := p.fetchBlockTxs(head.Number)
 	if err != nil {
 		log.Fatal(err)
@@ -64,18 +84,18 @@ func (p *TxsMonitor) handleNewHead(head *types.Header) {
 	fmt.Printf("=> New head #%d: %d/%d transactions confrimed\n", head.Number, len(txHashes), len(p.txSubs))
 }
 
-func (p *TxsMonitor) eventLoop() {
+func (p *TxPool) eventLoop() {
 	for {
 		select {
 		case head := <-p.newHeadCh:
 			p.handleNewHead(head)
 		case <-p.newHeadSub.Err():
-			log.Fatalln("TxPool exited.")
+			log.Fatalln("TxsMonitor exited.")
 		}
 	}
 }
 
-func (p *TxsMonitor) start() (err error) {
+func (p *TxPool) start() (err error) {
 	ctx := context.Background()
 	client := ethclient.NewClient(p.rpcClient)
 	p.newHeadSub, err = client.SubscribeNewHead(ctx, p.newHeadCh)
@@ -86,7 +106,7 @@ func (p *TxsMonitor) start() (err error) {
 	return nil
 }
 
-func (p *TxsMonitor) add(txHash common.Hash) chan int {
+func (p *TxPool) add(txHash common.Hash) chan int {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	subCh := make(chan int, 1)
@@ -94,29 +114,18 @@ func (p *TxsMonitor) add(txHash common.Hash) chan int {
 	return subCh
 }
 
-func (p *TxsMonitor) remove(txHash common.Hash) {
+func (p *TxPool) remove(txHash common.Hash) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	delete(p.txSubs, txHash)
 }
 
-func (p *TxsMonitor) WaitForTxConfirmed(ctx context.Context, txHash common.Hash) error {
-	subCh := p.add(txHash)
-	defer p.remove(txHash)
-	select {
-	case <-subCh:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func NewTxsMonitor(rpcUrl string) (*TxsMonitor, error) {
-	rpcClient, err := DialRpc(rpcUrl)
+func NewTxPool(rpcUrl string) (*TxPool, error) {
+	rpcClient, err := core.DialRpc(rpcUrl)
 	if err != nil {
 		return nil, err
 	}
-	txpool := &TxsMonitor{
+	txpool := &TxPool{
 		rpcClient: rpcClient,
 		newHeadCh: make(chan *types.Header),
 		txSubs:    make(map[common.Hash]chan int),
@@ -127,15 +136,12 @@ func NewTxsMonitor(rpcUrl string) (*TxsMonitor, error) {
 	return txpool, nil
 }
 
-func InitTxsMonitor(rpcUrl string) (*TxsMonitor, error) {
+func InitTxPool(rpcUrl string) (*TxPool, error) {
 	var err error = nil
-	txsMonitor, err = NewTxsMonitor(rpcUrl)
-	return txsMonitor, err
+	pool, err = NewTxPool(rpcUrl)
+	return pool, err
 }
 
-func WaitForTxConfirmed(ctx context.Context, txHash common.Hash) error {
-	if txsMonitor != nil {
-		return txsMonitor.WaitForTxConfirmed(ctx, txHash)
-	}
-	return errors.New("not init")
+func NewTxSender(rpcClient *rpc.Client) TxSender {
+	return &txSenderImpl{rpcClient}
 }

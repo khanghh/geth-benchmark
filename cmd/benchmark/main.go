@@ -152,7 +152,7 @@ func run(ctx *cli.Context) error {
 		log.Fatal("Unknown benchmark testcase.")
 	}
 
-	fmt.Println("Starting benchmark test.")
+	log.Println("Starting benchmark test.")
 	result := engine.Run(context.Background(), testToRun)
 	printBenchmarkResult(result)
 	return nil

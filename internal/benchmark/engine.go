@@ -62,7 +62,7 @@ func (e *BenchmarkEngine) consumeWork(wg *LimitWaitGroup, workerIdx int, workCh 
 	for workIdx := range workCh {
 		startTime := time.Now()
 		err := e.doWork(worker, workIdx)
-		e.onWorkFinish(&WorkResult{
+		go e.onWorkFinish(&WorkResult{
 			WorkIndex: workIdx,
 			Elapsed:   time.Since(startTime),
 			Error:     err,
@@ -95,7 +95,7 @@ func (e *BenchmarkEngine) Run(ctx context.Context, testToRun BenchmarkTest) *Ben
 	e.testToRun = testToRun
 	e.testToRun.Prepair(e.Options)
 
-	log.Printf("Running testcase with %d workres", e.NumWorkers)
+	log.Printf("Running testcase with %d workers", e.NumWorkers)
 	wg := NewLimitWaitGroup(e.NumWorkers)
 	workCh := make(chan int, 100*e.ExecuteRate)
 	for workerIdx := 0; workerIdx < e.NumWorkers; workerIdx++ {
@@ -109,6 +109,7 @@ func (e *BenchmarkEngine) Run(ctx context.Context, testToRun BenchmarkTest) *Ben
 
 	log.Println("Waiting for all workers to finish")
 	wg.Wait()
+	time.Sleep(1 * time.Second)
 	e.testToRun.OnFinish(e.result)
 	return e.result
 }

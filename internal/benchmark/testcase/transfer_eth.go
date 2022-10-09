@@ -4,81 +4,42 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"geth-benchmark/internal/benchmark"
-	"geth-benchmark/internal/core"
+	"geth-benchmark/internal/txpool"
 	"log"
 	"math/big"
 	"reflect"
 
 	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-type waitForReceiptFunc func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
-
 type TransferEthWorker struct {
-	client       *ethclient.Client
+	rpcClient    *rpc.Client
 	chainId      *big.Int
 	account      accounts.Account
 	privateKey   *ecdsa.PrivateKey
 	pendingNonce uint64
 }
 
-func (w *TransferEthWorker) eip1559TransferETH(ctx context.Context, receiverAddr common.Address, value *big.Int) (*types.Transaction, error) {
+func (w *TransferEthWorker) DoWork(ctx context.Context, workIdx int) error {
 	tx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   w.chainId,
 		Nonce:     w.pendingNonce,
 		GasFeeCap: big.NewInt(101 * params.GWei),
 		GasTipCap: big.NewInt(101 * params.GWei),
 		Gas:       21000,
-		To:        &receiverAddr,
-		Value:     value,
+		To:        &w.account.Address,
+		Value:     big.NewInt(0),
 	})
-	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(w.chainId), w.privateKey)
-	if err != nil {
-		return nil, err
-	}
 	w.pendingNonce += 1
-
-	if err := w.client.SendTransaction(ctx, signedTx); err != nil {
-		return nil, err
-	}
-	return signedTx, err
-}
-
-func (w *TransferEthWorker) transferETH(ctx context.Context, receiverAddr common.Address, value *big.Int) (*types.Transaction, error) {
-	gasPrice, err := w.client.SuggestGasPrice(ctx)
-	if err != nil {
-		return nil, err
-	}
-	tx := types.NewTx(&types.LegacyTx{
-		Nonce:    w.pendingNonce,
-		To:       &receiverAddr,
-		Value:    value,
-		Gas:      21000,
-		GasPrice: gasPrice,
-	})
 	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(w.chainId), w.privateKey)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := w.client.SendTransaction(ctx, signedTx); err != nil {
-		return nil, err
-	}
-	w.pendingNonce += 1
-	return signedTx, err
-}
-
-func (w *TransferEthWorker) DoWork(ctx context.Context, workIdx int) error {
-	tx, err := w.eip1559TransferETH(context.Background(), w.account.Address, big.NewInt(0))
 	if err != nil {
 		return err
 	}
-	return core.WaitForTxConfirmed(ctx, tx.Hash())
+	return txpool.NewTxSender(w.rpcClient).SendTransaction(ctx, signedTx)
 }
 
 type TransferEth struct {
@@ -112,21 +73,21 @@ func (t *TransferEth) Prepair(opts benchmark.Options) {
 	}
 	t.wallet = wallet
 
-	log.Println("Fetching accounts' nonces.")
+	log.Println("Fetching accounts' nonces")
 	_, err = t.wallet.FetchNonces(rpcClient)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Println("Starting transactions monitor.")
-	if _, err := core.InitTxsMonitor(opts.RpcUrl); err != nil {
-		log.Fatal("Failed to initialize TxsMonitor", err)
+	log.Println("Starting transaction monitor")
+	if _, err := txpool.InitTxPool(opts.RpcUrl); err != nil {
+		log.Fatal(err)
 	}
 }
 
 func (t *TransferEth) CreateWorker(rpcClient *rpc.Client, workerIdx int) benchmark.BenchmarkWorker {
 	worker := &TransferEthWorker{
-		client:       ethclient.NewClient(rpcClient),
+		rpcClient:    rpcClient,
 		chainId:      t.chainId,
 		account:      t.wallet.Accounts[workerIdx],
 		privateKey:   t.wallet.PrivateKeys[workerIdx],
