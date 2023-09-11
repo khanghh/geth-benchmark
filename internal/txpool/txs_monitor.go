@@ -30,11 +30,9 @@ type txSenderImpl struct {
 
 // SendTransaction send and wait until transaction minted
 func (sender *txSenderImpl) SendTransaction(ctx context.Context, signedTx *types.Transaction) error {
-	subCh := pool.add(signedTx.Hash())
-	defer pool.remove(signedTx.Hash())
+	subCh := pool.subscribeTxConfirmed(signedTx.Hash())
 	client := ethclient.NewClient(sender.rpcClient)
-	err := client.SendTransaction(ctx, signedTx)
-	if err != nil {
+	if err := client.SendTransaction(ctx, signedTx); err != nil {
 		return err
 	}
 	select {
@@ -64,24 +62,14 @@ func (p *TxPool) fetchBlockTxs(blockNum *big.Int) ([]common.Hash, error) {
 	return resp.Transactions, nil
 }
 
-func (m *TxPool) dispatchTxConfirmed(txHash common.Hash) {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	if sub, ok := m.txSubs[txHash]; ok {
-		sub <- 1
-		close(sub)
-	}
-}
-
 func (p *TxPool) handleNewHead(head *types.Header) {
+	totalTxs := len(p.txSubs)
 	txHashes, err := p.fetchBlockTxs(head.Number)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, txHash := range txHashes {
-		p.dispatchTxConfirmed(txHash)
-	}
-	fmt.Printf("=> New head #%d: %d/%d transactions confrimed\n", head.Number, len(txHashes), len(p.txSubs))
+	p.dispatchTxsConfirmed(txHashes)
+	fmt.Printf("=> New head #%d: %d/%d transactions confrimed\n", head.Number, len(txHashes), totalTxs)
 }
 
 func (p *TxPool) eventLoop() {
@@ -90,7 +78,7 @@ func (p *TxPool) eventLoop() {
 		case head := <-p.newHeadCh:
 			p.handleNewHead(head)
 		case <-p.newHeadSub.Err():
-			log.Fatalln("TxsMonitor exited.")
+			log.Fatalln("TxPool exited.")
 		}
 	}
 }
@@ -106,7 +94,7 @@ func (p *TxPool) start() (err error) {
 	return nil
 }
 
-func (p *TxPool) add(txHash common.Hash) chan int {
+func (p *TxPool) subscribeTxConfirmed(txHash common.Hash) chan int {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	subCh := make(chan int, 1)
@@ -114,10 +102,16 @@ func (p *TxPool) add(txHash common.Hash) chan int {
 	return subCh
 }
 
-func (p *TxPool) remove(txHash common.Hash) {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
-	delete(p.txSubs, txHash)
+func (m *TxPool) dispatchTxsConfirmed(txHashes []common.Hash) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	for _, txHash := range txHashes {
+		if sub, ok := m.txSubs[txHash]; ok {
+			sub <- 1
+			close(sub)
+			delete(m.txSubs, txHash)
+		}
+	}
 }
 
 func NewTxPool(rpcUrl string) (*TxPool, error) {

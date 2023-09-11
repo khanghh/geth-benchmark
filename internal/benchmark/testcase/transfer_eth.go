@@ -25,14 +25,12 @@ type TransferEthWorker struct {
 }
 
 func (w *TransferEthWorker) DoWork(ctx context.Context, workIdx int) error {
-	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   w.chainId,
-		Nonce:     w.pendingNonce,
-		GasFeeCap: big.NewInt(101 * params.GWei),
-		GasTipCap: big.NewInt(101 * params.GWei),
-		Gas:       21000,
-		To:        &w.account.Address,
-		Value:     big.NewInt(0),
+	tx := types.NewTx(&types.LegacyTx{
+		Nonce:    w.pendingNonce,
+		GasPrice: big.NewInt(0 * params.GWei),
+		Gas:      21000,
+		To:       &w.account.Address,
+		Value:    big.NewInt(0),
 	})
 	w.pendingNonce += 1
 	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(w.chainId), w.privateKey)

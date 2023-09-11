@@ -91,7 +91,7 @@ func (c *resultCollector) printStatus() {
 	fmt.Printf("ExecPerSec: %.2f\n", result.ExecPerSec)
 	fmt.Printf("SubmitedPerSec: %.2f\n", result.SubmitPerSec)
 	fmt.Println("TimeTaken: ", timeTaken)
-	fmt.Println("Pending:", result.Total-(result.Succeeded+result.Failed))
+	fmt.Println("Working:", result.Total-(result.Succeeded+result.Failed))
 	fmt.Println()
 }
 

@@ -20,7 +20,7 @@ type Options struct {
 }
 
 type BenchmarkWorker interface {
-	DoWork(ctx context.Context, workerIndex int) error
+	DoWork(ctx context.Context, workIdx int) error
 }
 
 type BenchmarkTest interface {
@@ -61,6 +61,7 @@ func (e *BenchmarkEngine) consumeWork(wg *LimitWaitGroup, workerIdx int, workCh 
 	worker := e.testToRun.CreateWorker(client, workerIdx)
 	for workIdx := range workCh {
 		startTime := time.Now()
+		go e.onWorkStart(workIdx)
 		err := e.doWork(worker, workIdx)
 		go e.onWorkFinish(&WorkResult{
 			WorkIndex: workIdx,
@@ -76,7 +77,6 @@ func (e *BenchmarkEngine) produceWork(workCh chan<- int) {
 	for workIdx := 0; true; workIdx++ {
 		e.limiter.Take()
 		workCh <- workIdx
-		e.onWorkStart(workIdx)
 		if time.Now().After(deadline) {
 			return
 		}
